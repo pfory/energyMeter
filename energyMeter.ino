@@ -40,7 +40,7 @@ bool                         saveEEPROMEnergy  = false;
 const float                  pulseCountkWh     = 1000.f;  //pocet impulsu na 1 kWh
 const float                  WhkWh             = 1000.f;  //pocet Wh na kWh
 const float                  diffForSavekWh    = 0.1f ;    //diference kWh pro zapis do EEPROM
-unsigned int p=0;
+
 
 #ifdef IoT
 #define AP_SSID "Datlovo"
@@ -161,7 +161,13 @@ void loop() {
       valueStr = String(pulse2kWh(pulseTotal));
       topic = "/Db/" + instanceId + "/3/Sensor.Parameter2";
       result = myMqtt.publish(topic, valueStr);
-      Serial.print(p++);
+      valueStr = String(pulse2kWh(pulseHour));
+      topic = "/Db/" + instanceId + "/3/Sensor.Parameter4";
+      result = myMqtt.publish(topic, valueStr);
+      valueStr = String(pulse2kWh(pulseDay));
+      topic = "/Db/" + instanceId + "/3/Sensor.Parameter1";
+      result = myMqtt.publish(topic, valueStr);
+
       Serial.print(". ");
       printDateTime();
       Serial.print(" ");
@@ -179,7 +185,7 @@ void loop() {
       if (minute()==0) {
         pulseHour=0;
       }
-      if (minute()==5 && hour()==0) {
+      if (minute()==0 && hour()==0) {
         pulseDay=0;
       }
 
