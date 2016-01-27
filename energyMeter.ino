@@ -7,8 +7,14 @@
 #include <MQTT.h>
 #include <EEPROM.h>
 
+/*16.1.2015
+merak chata   628.7
+merak cez   50055.0
+*/
+
+
 extern "C" {
-#include "user_interface.h"
+//#include "user_interface.h"
 }
 
 #define COUNTER_PIN           13
@@ -21,9 +27,9 @@ float                 tempIN        = 0;
 #include <ESP8266WiFi.h>
 WiFiClient client;
 
-const char* ssid     = "Datlovo";
+/*const char* ssid     = "Datlovo";
 const char* password = "Nu6kMABmseYwbCoJ7LyG";
-
+*/
 byte status=0;
 unsigned long                lastSendTime      = 0;
 const unsigned long          sendInterval      = 5000; //ms
@@ -37,10 +43,11 @@ volatile unsigned long       lastPulse         = 0;
 unsigned long                lastPulseOld      = 0;
 unsigned long                consumption       = 0;
 bool                         saveEEPROMEnergy  = false;
-const float                  pulseCountkWh     = 1000.f;  //pocet impulsu na 1 kWh
+const float                  pulseCountkWh     = 700.f;  //pocet impulsu na 1 kWh
 const float                  WhkWh             = 1000.f;  //pocet Wh na kWh
 const float                  diffForSavekWh    = 0.1f ;    //diference kWh pro zapis do EEPROM
-
+byte                         minuteOld         = 0;
+byte                         hourOld           = 0;
 
 #ifdef IoT
 #define AP_SSID "Datlovo"
@@ -60,7 +67,7 @@ String topic("");
 bool stepOk                         = false;
 
 #define CONFIG_START 0
-#define CONFIG_VERSION "v06"
+#define CONFIG_VERSION "v08"
 
 struct StoreStruct {
   // This is for mere detection if they are your settings
@@ -70,7 +77,7 @@ struct StoreStruct {
 } storage = {
   CONFIG_VERSION,
   3,
-  724.6,
+  50057,
 };
 
 #endif
@@ -82,7 +89,7 @@ unsigned int localPort = 8888;      // local port to listen for UDP packets
  *  Lookup the IP address for the host name instead */
 //IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 IPAddress timeServerIP; // time.nist.gov NTP server address
-const char* ntpServerName = "time.windows.com";
+const char* ntpServerName = "ntp.nic.cz";
 const int timeZone = 1;     // Central European Time
 
 const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
@@ -182,10 +189,12 @@ void loop() {
       topic = "/Db/" + instanceId + "/3/Sensor.Parameter3";
       result = myMqtt.publish(topic, valueStr);
       
-      if (minute()==0) {
+      if (minute() < minuteOld) {
+        minuteOld=0;
         pulseHour=0;
       }
-      if (minute()==0 && hour()==0) {
+      if (hour() < hourOld) {
+        hourOld=0;
         pulseDay=0;
       }
 
