@@ -38,10 +38,12 @@ function pinPulse(level)
     if (tmr.now() - pulseDuration) > 70000 and (tmr.now() - pulseDuration) < 100000 then
       pulseTotal=pulseTotal+1
       gpio.write(pinLed,gpio.LOW) 
-      if (pulseLength<0) then --timer overloaded
-        pulseLength = pulseLength + 2147483648
-      end
       pulseLength = (tmr.now() - pulseOld)/1000
+      if (tmr.now()<pulseOld) then --timer overloaded
+        pulseLength = math.pow (2, 31) - pulseOld + tmr.now()
+      else
+        pulseLength = tmr.now() - pulseOld
+      end
       pulseOld = tmr.now()
       print("dobezna")
       print(pulseLength)
