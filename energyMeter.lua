@@ -1,6 +1,6 @@
 --Init  
 base = "/flat/EnergyMeter/esp09/"
-
+deviceID = "ESP8266 PowerMeter "..node.chipid()
 
 pulseTotal        = 0
 pulseLength       = 0
@@ -14,15 +14,15 @@ wifi.sta.config("Datlovo","Nu6kMABmseYwbCoJ7LyG")
 
 Broker="88.146.202.186"  
 
-pinLed = 1
+pinLed = 6
 gpio.mode(pinLed,gpio.OUTPUT)  
 gpio.write(pinLed,gpio.LOW)  
 
-versionSW         = 0.3
+versionSW         = 0.4
 versionSWString   = "EnergyMeter v" 
 print(versionSWString .. versionSW)
 
-pin = 2
+pin = 7
 pulse1 = 0
 du=0
 gpio.mode(pin,gpio.INT)
@@ -38,11 +38,10 @@ function pinPulse(level)
     if (tmr.now() - pulseDuration) > 70000 and (tmr.now() - pulseDuration) < 100000 then
       pulseTotal=pulseTotal+1
       gpio.write(pinLed,gpio.LOW) 
-      pulseLength = (tmr.now() - pulseOld)/1000
       if (tmr.now()<pulseOld) then --timer overloaded
-        pulseLength = math.pow (2, 31) - pulseOld + tmr.now()
+        pulseLength = (math.pow (2, 31) - pulseOld + tmr.now()) / 1000
       else
-        pulseLength = tmr.now() - pulseOld
+        pulseLength = (tmr.now() - pulseOld)/1000
       end
       pulseOld = tmr.now()
       print("dobezna")
@@ -64,18 +63,26 @@ function sendData()
     m:publish(base.."pulseLength", pulseLength,0,0)  
     m:publish(base.."VersionSW",   versionSW,0,0)  
     m:publish(base.."HeartBeat",   heartBeat,0,0)
-   
-    file.open("config.ini", "w+")
-    --file.write('pulseCount=')
-    file.write(string.format("%u", pulseTotal))
-    file.write("\n\r")
-    file.close()
-    
+
+    if pulseTotal % 100 == 0 then
+      file.open("config.ini", "w+")
+      --file.write('pulseCount=')
+      file.write(string.format("%u", pulseTotal))
+      file.write("\n\r")
+      file.close()
+    end
     if heartBeat==0 then heartBeat=1
     else heartBeat=0
     end
   end 
 end
+
+function mqtt_sub()  
+  m:subscribe(base,0, function(conn)   
+    print("Mqtt Subscribed to OpenHAB feed for device "..deviceID)  
+  end)  
+end  
+
 
 function reconnect()
   print ("Waiting for Wifi")
@@ -91,8 +98,8 @@ function reconnect()
 end
 
 
-m = mqtt.Client("ESP8266 PowerMeter", 180, "datel", "hanka12")  
-m:lwt("/lwt", "ESP8266", 0, 0)  
+m = mqtt.Client(deviceID, 180, "datel", "hanka12")  
+m:lwt("/lwt", deviceID, 0, 0)  
 m:on("offline", function(con)   
   print ("Mqtt Reconnecting...")   
   tmr.alarm(1, 10000, 1, function()  
@@ -113,22 +120,22 @@ tmr.alarm(0, 1000, 1, function()
   if wifi.sta.status() == 5 and wifi.sta.getip() ~= nil then 
     print ("Wifi connected")
     tmr.stop(0) 
-    print ("Read config file... ")
-    file.open("config.ini", "r")
-    s = file.readline()
-    if (s==nil) then
-      print("empty file")
-      pulseTotal=0
-    else
-      pulseTotal = s
-    end
-    print(pulseTotal)
-    file.close()  
     m:connect(Broker, 31883, 0, function(conn) 
+      mqtt_sub() --run the subscription function 
       print(wifi.sta.getip())
       print("Mqtt Connected to:" .. Broker.." - "..base) 
       gpio.trig(pin, "both", pinPulse)
-      --tmr.alarm(2, 2000, 1, function() sendData() end )
+      print ("Read config file... ")
+      file.open("config.ini", "r")
+      s = file.readline()
+      if (s==nil) then
+        print("empty file")
+        pulseTotal=0
+      else
+        pulseTotal = s
+      end
+      print(pulseTotal)
+      file.close()  
     end) 
   end
 end)
