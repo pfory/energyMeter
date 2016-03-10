@@ -107,8 +107,6 @@ m:on("offline", function(con)
   end)
 end)  
 
-function mqtt_sub()  
-end  
 
  -- on publish message receive event  
 m:on("message", function(conn, topic, data)   
