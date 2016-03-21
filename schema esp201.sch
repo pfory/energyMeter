@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE eagle SYSTEM "eagle.dtd">
-<eagle version="7.3.0">
+<eagle version="6.5.0">
 <drawing>
 <settings>
 <setting alwaysvectorfont="no"/>
@@ -5597,8 +5597,9 @@ Marquardt, RAFI, ITT, and others&lt;p&gt;
 <part name="R4" library="rcl" deviceset="R-EU_" device="0207/10" value="10k"/>
 <part name="S1" library="switch-misc" deviceset="PVA1R" device=""/>
 <part name="P+1" library="supply1" deviceset="+12V" device=""/>
-<part name="SL2" library="con-amp-quick" deviceset="M02" device=""/>
 <part name="SL3" library="con-amp-quick" deviceset="M04" device=""/>
+<part name="SL1" library="con-amp-quick" deviceset="M02" device=""/>
+<part name="SL2" library="con-amp-quick" deviceset="M04" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -5616,8 +5617,9 @@ Marquardt, RAFI, ITT, and others&lt;p&gt;
 <instance part="S1" gate="1" x="2.54" y="40.64"/>
 <instance part="S1" gate="2" x="10.16" y="40.64"/>
 <instance part="P+1" gate="1" x="83.82" y="81.28"/>
-<instance part="SL2" gate="G$1" x="91.44" y="71.12" rot="R180"/>
 <instance part="SL3" gate="G$1" x="-10.16" y="71.12"/>
+<instance part="SL1" gate="G$1" x="76.2" y="71.12" rot="R180"/>
+<instance part="SL2" gate="G$1" x="101.6" y="71.12" rot="R180"/>
 </instances>
 <busses>
 </busses>
@@ -5642,6 +5644,11 @@ Marquardt, RAFI, ITT, and others&lt;p&gt;
 <pinref part="S1" gate="2" pin="P"/>
 <wire x1="10.16" y1="35.56" x2="10.16" y2="33.02" width="0.1524" layer="91"/>
 <wire x1="10.16" y1="33.02" x2="20.32" y2="33.02" width="0.1524" layer="91"/>
+<pinref part="SL1" gate="G$1" pin="2"/>
+<wire x1="68.58" y1="68.58" x2="68.58" y2="50.8" width="0.1524" layer="91"/>
+<wire x1="83.82" y1="33.02" x2="96.52" y2="33.02" width="0.1524" layer="91"/>
+<wire x1="96.52" y1="33.02" x2="96.52" y2="66.04" width="0.1524" layer="91"/>
+<pinref part="SL2" gate="G$1" pin="4"/>
 </segment>
 </net>
 <net name="N$2" class="0">
@@ -5661,12 +5668,15 @@ Marquardt, RAFI, ITT, and others&lt;p&gt;
 <wire x1="20.32" y1="43.18" x2="20.32" y2="48.26" width="0.1524" layer="91"/>
 <wire x1="20.32" y1="48.26" x2="20.32" y2="60.96" width="0.1524" layer="91"/>
 <wire x1="20.32" y1="60.96" x2="20.32" y2="81.28" width="0.1524" layer="91"/>
-<wire x1="20.32" y1="81.28" x2="73.66" y2="81.28" width="0.1524" layer="91"/>
+<wire x1="20.32" y1="81.28" x2="68.58" y2="81.28" width="0.1524" layer="91"/>
+<wire x1="68.58" y1="81.28" x2="73.66" y2="81.28" width="0.1524" layer="91"/>
 <wire x1="73.66" y1="81.28" x2="73.66" y2="86.36" width="0.1524" layer="91"/>
 <pinref part="U$1" gate="G$1" pin="CH_PD"/>
 <wire x1="27.94" y1="48.26" x2="20.32" y2="48.26" width="0.1524" layer="91"/>
 <pinref part="R4" gate="G$1" pin="1"/>
 <wire x1="10.16" y1="60.96" x2="20.32" y2="60.96" width="0.1524" layer="91"/>
+<pinref part="SL1" gate="G$1" pin="1"/>
+<wire x1="68.58" y1="71.12" x2="68.58" y2="81.28" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="N$1" class="0">
@@ -5724,17 +5734,21 @@ Marquardt, RAFI, ITT, and others&lt;p&gt;
 <pinref part="SL3" gate="G$1" pin="1"/>
 </segment>
 </net>
-<net name="N$7" class="0">
-<segment>
-<pinref part="R1" gate="G$1" pin="1"/>
-<pinref part="SL2" gate="G$1" pin="2"/>
-</segment>
-</net>
 <net name="+12V" class="0">
 <segment>
 <pinref part="P+1" gate="1" pin="+12V"/>
+<wire x1="83.82" y1="78.74" x2="83.82" y2="73.66" width="0.1524" layer="91"/>
+<wire x1="83.82" y1="73.66" x2="96.52" y2="73.66" width="0.1524" layer="91"/>
 <pinref part="SL2" gate="G$1" pin="1"/>
-<wire x1="83.82" y1="78.74" x2="83.82" y2="71.12" width="0.1524" layer="91"/>
+<pinref part="SL2" gate="G$1" pin="2"/>
+<wire x1="96.52" y1="73.66" x2="96.52" y2="71.12" width="0.1524" layer="91"/>
+</segment>
+</net>
+<net name="N$7" class="0">
+<segment>
+<pinref part="R1" gate="G$1" pin="1"/>
+<pinref part="SL2" gate="G$1" pin="3"/>
+<wire x1="83.82" y1="68.58" x2="96.52" y2="68.58" width="0.1524" layer="91"/>
 </segment>
 </net>
 </nets>
