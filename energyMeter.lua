@@ -5,7 +5,7 @@ deviceID = "ESP8266 PowerMeter "..node.chipid()
 pulseTotal        = 0
 pulseLength       = 0
 pulseOld          = 0
-heartBeat         = 10
+heartBeat         = node.bootreason()
 lastSend          = tmr.now()
 pulseDuration     = 0
 
@@ -14,15 +14,15 @@ wifi.sta.config("Datlovo","Nu6kMABmseYwbCoJ7LyG")
 
 Broker="88.146.202.186"  
 
-pinLed = 6
+pinLed = 3
 gpio.mode(pinLed,gpio.OUTPUT)  
 gpio.write(pinLed,gpio.LOW)  
 
-versionSW         = 0.4
+versionSW         = 0.5
 versionSWString   = "EnergyMeter v" 
 print(versionSWString .. versionSW)
 
-pin = 7
+pin = 4
 pulse1 = 0
 du=0
 gpio.mode(pin,gpio.INT)
@@ -44,8 +44,7 @@ function pinPulse(level)
         pulseLength = (tmr.now() - pulseOld)/1000
       end
       pulseOld = tmr.now()
-      print("dobezna")
-      print(pulseLength)
+      print("dobezna delka:"..pulseLength)
       sendData()
     end
   end
@@ -55,18 +54,17 @@ end
 function sendData()
   if (tmr.now() - lastSend) > 5000000 or lastSend > tmr.now() then
     lastSend = tmr.now()
-    print("I am sending pulse to OpenHab")
-    print(pulseTotal)
+    print("I am sending pulse to OpenHab:"..pulseTotal)
     --pulseTotal = pulseTotal + 1
     --pulseLength = math.random(100,1000000)
-    m:publish(base.."Pulse",pulseTotal,0,0)  
-    m:publish(base.."pulseLength", pulseLength,0,0)  
+    
+    m:publish(base.."Pulse",string.format("%.0f",pulseTotal),0,0)  
+    m:publish(base.."pulseLength", string.format("%.0f",pulseLength),0,0)  
     m:publish(base.."VersionSW",   versionSW,0,0)  
-    m:publish(base.."HeartBeat",   heartBeat,0,0)
+    m:publish(base.."HeartBeat",   string.format("%.0f",heartBeat),0,0)
 
     if pulseTotal % 100 == 0 then
       file.open("config.ini", "w+")
-      --file.write('pulseCount=')
       file.write(string.format("%u", pulseTotal))
       file.write("\n\r")
       file.close()
@@ -74,6 +72,8 @@ function sendData()
     if heartBeat==0 then heartBeat=1
     else heartBeat=0
     end
+    print("Data sent")
+
   end 
 end
 
@@ -113,8 +113,25 @@ m:on("message", function(conn, topic, data)
   print("Received:" .. topic .. ":" .. data) 
 end)  
 
+function readConfig() 
+  print ("Read config file... ")
+  file.open("config.ini", "r")
+  s = file.readline()
+  if (s==nil) then
+    print("empty file")
+    pulseTotal=0
+  else
+    pulseTotal = s
+    pulseTotal=pulseTotal+0
+  end
+  print(pulseTotal)
+  file.close()  
+end
+
+readConfig()
+
 tmr.alarm(0, 1000, 1, function() 
-  print ("Connecting to Wifi... ")
+  print ("Connecting to Wifi...")
   if wifi.sta.status() == 5 and wifi.sta.getip() ~= nil then 
     print ("Wifi connected")
     tmr.stop(0) 
@@ -123,17 +140,7 @@ tmr.alarm(0, 1000, 1, function()
       print(wifi.sta.getip())
       print("Mqtt Connected to:" .. Broker.." - "..base) 
       gpio.trig(pin, "both", pinPulse)
-      print ("Read config file... ")
-      file.open("config.ini", "r")
-      s = file.readline()
-      if (s==nil) then
-        print("empty file")
-        pulseTotal=0
-      else
-        pulseTotal = s
-      end
-      print(pulseTotal)
-      file.close()  
     end) 
   end
 end)
+
