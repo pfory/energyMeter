@@ -11,6 +11,7 @@ pulseDuration     = 0
 
 wifi.setmode(wifi.STATION)
 wifi.sta.config("Datlovo","Nu6kMABmseYwbCoJ7LyG")
+wifi.sta.autoconnect(1)
 
 Broker="88.146.202.186"  
 
