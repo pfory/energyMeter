@@ -5,9 +5,12 @@ deviceID = "ESP8266 PowerMeter "..node.chipid()
 pulseTotal        = 0
 pulseLength       = 0
 pulseOld          = 0
-heartBeat         = 10
 lastSend          = tmr.now()
 pulseDuration     = 0
+
+heartBeat = node.bootreason() + 10
+print("Boot reason:")
+print(heartBeat)
 
 wifi.setmode(wifi.STATION)
 wifi.sta.config("Datlovo","Nu6kMABmseYwbCoJ7LyG")
