@@ -3690,7 +3690,7 @@ Grid 5.08 mm&lt;p&gt;
 <part name="R2" library="rcl" deviceset="R-EU_" device="0207/7"/>
 <part name="+3V1" library="supply1" deviceset="+3V3" device=""/>
 <part name="INPUT" library="con-wago-508" deviceset="W237-3E" device=""/>
-<part name="INPUT1" library="con-wago-508" deviceset="W237-3E" device=""/>
+<part name="OUTPUT" library="con-wago-508" deviceset="W237-3E" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -3705,9 +3705,9 @@ Grid 5.08 mm&lt;p&gt;
 <instance part="INPUT" gate="-1" x="53.34" y="63.5"/>
 <instance part="INPUT" gate="-2" x="53.34" y="60.96"/>
 <instance part="INPUT" gate="-3" x="53.34" y="58.42"/>
-<instance part="INPUT1" gate="-1" x="96.52" y="43.18" rot="R180"/>
-<instance part="INPUT1" gate="-2" x="96.52" y="48.26" rot="R180"/>
-<instance part="INPUT1" gate="-3" x="96.52" y="53.34" rot="R180"/>
+<instance part="OUTPUT" gate="-1" x="96.52" y="43.18" rot="R180"/>
+<instance part="OUTPUT" gate="-2" x="96.52" y="48.26" rot="R180"/>
+<instance part="OUTPUT" gate="-3" x="96.52" y="53.34" rot="R180"/>
 </instances>
 <busses>
 </busses>
@@ -3724,7 +3724,7 @@ Grid 5.08 mm&lt;p&gt;
 <junction x="63.5" y="38.1"/>
 <wire x1="91.44" y1="43.18" x2="81.28" y2="43.18" width="0.1524" layer="91"/>
 <junction x="81.28" y="43.18"/>
-<pinref part="INPUT1" gate="-1" pin="KL"/>
+<pinref part="OUTPUT" gate="-1" pin="KL"/>
 </segment>
 </net>
 <net name="N$2" class="0">
@@ -3740,7 +3740,7 @@ Grid 5.08 mm&lt;p&gt;
 <pinref part="R2" gate="G$1" pin="1"/>
 <wire x1="81.28" y1="48.26" x2="91.44" y2="48.26" width="0.1524" layer="91"/>
 <junction x="81.28" y="48.26"/>
-<pinref part="INPUT1" gate="-2" pin="KL"/>
+<pinref part="OUTPUT" gate="-2" pin="KL"/>
 </segment>
 </net>
 <net name="+3V3" class="0">
@@ -3748,7 +3748,7 @@ Grid 5.08 mm&lt;p&gt;
 <pinref part="R2" gate="G$1" pin="2"/>
 <pinref part="+3V1" gate="G$1" pin="+3V3"/>
 <wire x1="81.28" y1="60.96" x2="81.28" y2="58.42" width="0.1524" layer="91"/>
-<pinref part="INPUT1" gate="-3" pin="KL"/>
+<pinref part="OUTPUT" gate="-3" pin="KL"/>
 <wire x1="91.44" y1="53.34" x2="86.36" y2="53.34" width="0.1524" layer="91"/>
 <wire x1="86.36" y1="53.34" x2="86.36" y2="58.42" width="0.1524" layer="91"/>
 <wire x1="86.36" y1="58.42" x2="81.28" y2="58.42" width="0.1524" layer="91"/>
