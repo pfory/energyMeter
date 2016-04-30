@@ -5,7 +5,7 @@ deviceID = "ESP8266 PowerMeter "..node.chipid()
 pulseTotal        = 0
 pulseLength       = 0
 pulseOld          = 0
-heartBeat         = 10
+heartBeat         = node.bootreason() + 10
 lastSend          = tmr.now()
 pulseDuration     = 0
 
@@ -19,7 +19,7 @@ pinLed = 3
 gpio.mode(pinLed,gpio.OUTPUT)  
 gpio.write(pinLed,gpio.LOW)  
 
-versionSW         = 0.4
+versionSW         = 0.45
 versionSWString   = "EnergyMeter chata v" 
 print(versionSWString .. versionSW)
 
@@ -60,10 +60,10 @@ function sendData()
     print(pulseTotal)
     --pulseTotal = pulseTotal + 1
     --pulseLength = math.random(100,1000000)
-    m:publish(base.."s0/Pulse",pulseTotal,0,0)  
-    m:publish(base.."s2/pulseLength", pulseLength,0,0)  
-    m:publish(base.."s1/VersionSW",   versionSW,0,0)  
-    m:publish(base.."s3/HeartBeat",   heartBeat,0,0)
+    m:publish(base.."Pulse",pulseTotal,0,0)  
+    m:publish(base.."pulseLength", pulseLength,0,0)  
+    m:publish(base.."VersionSW",   versionSW,0,0)  
+    m:publish(base.."HeartBeat",   heartBeat,0,0)
 
     if pulseTotal % 100 == 0 then
       file.open("config.ini", "w+")
@@ -135,6 +135,8 @@ tmr.alarm(0, 1000, 1, function()
       end
       print(pulseTotal)
       file.close()  
+      m:publish(base.."VersionSW",   versionSW,0,0)  
+      m:publish(base.."HeartBeat",   heartBeat,0,0)
     end) 
   end
 end)
