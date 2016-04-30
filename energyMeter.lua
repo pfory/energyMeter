@@ -5,10 +5,7 @@ deviceID = "ESP8266 PowerMeter "..node.chipid()
 pulseTotal        = 0
 pulseLength       = 0
 pulseOld          = 0
-<<<<<<< HEAD
 heartBeat         = node.bootreason() + 10
-=======
->>>>>>> 2f9051545b7766d005577358df94d2c7dd7f28b5
 lastSend          = tmr.now()
 pulseDuration     = 0
 
