@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE eagle SYSTEM "eagle.dtd">
-<eagle version="6.5.0">
+<eagle version="7.3.0">
 <drawing>
 <settings>
 <setting alwaysvectorfont="no"/>
@@ -3686,8 +3686,8 @@ Grid 5.08 mm&lt;p&gt;
 <parts>
 <part name="OK1" library="optocoupler" deviceset="PC817" device=""/>
 <part name="GND1" library="supply1" deviceset="GND" device=""/>
-<part name="R1" library="rcl" deviceset="R-EU_" device="0207/7"/>
-<part name="R2" library="rcl" deviceset="R-EU_" device="0207/7"/>
+<part name="R1" library="rcl" deviceset="R-EU_" device="0207/7" value="1k"/>
+<part name="R2" library="rcl" deviceset="R-EU_" device="0207/7" value="560"/>
 <part name="+3V1" library="supply1" deviceset="+3V3" device=""/>
 <part name="INPUT" library="con-wago-508" deviceset="W237-3E" device=""/>
 <part name="OUTPUT" library="con-wago-508" deviceset="W237-3E" device=""/>
