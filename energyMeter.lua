@@ -8,6 +8,7 @@ pulseOld          = 0
 heartBeat         = node.bootreason() + 10
 lastSend          = tmr.now()
 pulseDuration     = 0
+sendingData       = false
 
 heartBeat = node.bootreason() + 10
 print("Boot reason:")
@@ -50,14 +51,17 @@ function pinPulse(level)
       end
       pulseOld = tmr.now()
       --print("dobezna delka:"..pulseLength)
-      sendData()
+      if (sendingData==false) then
+        sendData()
+      end
     end
   end
 end
 
 
 function sendData()
-  if (tmr.now() - lastSend) > 30000000 or lastSend > tmr.now() then
+  sendingData = true
+  if (tmr.now() - lastSend) > 5000000 or lastSend > tmr.now() then
     lastSend = tmr.now()
     print("I am sending pulse to OpenHab:"..pulseTotal)
     --pulseTotal = pulseTotal + 1
@@ -80,6 +84,7 @@ function sendData()
     print("Data sent")
 
   end 
+  sendingData = false
 end
 
 function mqtt_sub()  
