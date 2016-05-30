@@ -23,7 +23,7 @@ pinLed = 3
 gpio.mode(pinLed,gpio.OUTPUT)  
 gpio.write(pinLed,gpio.LOW)  
 
-versionSW         = 0.5
+versionSW         = 0.6
 versionSWString   = "EnergyMeter v" 
 print(versionSWString .. versionSW)
 
@@ -38,7 +38,7 @@ function pinPulse(level)
     --tmr.delay(10000)
     pulseDuration = tmr.now()
     gpio.write(pinLed,gpio.HIGH)  
-    print("nabezna")
+    --print("nabezna")
   else 
     if (tmr.now() - pulseDuration) > 70000 and (tmr.now() - pulseDuration) < 100000 then
       pulseTotal=pulseTotal+1
@@ -49,7 +49,7 @@ function pinPulse(level)
         pulseLength = (tmr.now() - pulseOld)/1000
       end
       pulseOld = tmr.now()
-      print("dobezna delka:"..pulseLength)
+      --print("dobezna delka:"..pulseLength)
       sendData()
     end
   end
@@ -57,7 +57,7 @@ end
 
 
 function sendData()
-  if (tmr.now() - lastSend) > 5000000 or lastSend > tmr.now() then
+  if (tmr.now() - lastSend) > 30000000 or lastSend > tmr.now() then
     lastSend = tmr.now()
     print("I am sending pulse to OpenHab:"..pulseTotal)
     --pulseTotal = pulseTotal + 1
