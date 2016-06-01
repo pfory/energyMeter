@@ -5,7 +5,6 @@ deviceID = "ESP8266 PowerMeter "..node.chipid()
 pulseTotal        = 0
 pulseLength       = 0
 pulseOld          = 0
-heartBeat         = node.bootreason() + 10
 lastSend          = tmr.now()
 pulseDuration     = 0
 pulseDurationMin  = 70000
@@ -14,6 +13,11 @@ sendingData       = false
 sendDelay         = 20000000 --in us
 
 heartBeat = node.bootreason() + 10
+val = rtcmem.read32(41, 1) -- Read the values in slots 41
+if (val==20) then
+  heartBeat=val
+  rtcmem.write32(41, 0)
+end
 uart.write(0,"Boot reason:")
 print(heartBeat)
 
@@ -138,7 +142,7 @@ m:on("message", function(conn, topic, data)
   if topic == base.."com" then
     if data == "ON" then
       print("Restarting ESP, bye.")
-      bootreason = 20
+      rtcmem.write32(41, 20) --save bootreason 20 to memory on address 41
       node.restart()
     end
   end
@@ -158,10 +162,12 @@ function readConfig()
   file.close()  
   print("PulseTotal from file:"..pulseTotal)
   val = rtcmem.read32(40, 1) -- Read the values in slots 41
+  print("PulseTotal from EEPROM:"..val)
   if (val - pulseTotal<100) then
     pulseTotal = val
     print("Correct pulseTotal from EEPROM:"..pulseTotal)
   end
+  rtcmem.write32(40, pulseTotal) --save pulsetotal to memory on address 40
 end
 
 readConfig()
