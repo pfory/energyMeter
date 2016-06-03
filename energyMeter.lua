@@ -56,6 +56,17 @@ function pinPulse(level)
   else 
     if (tmr.now() - pulseDuration) > pulseDurationMin and (tmr.now() - pulseDuration) < pulseDurationMax then
       pulseTotal=pulseTotal+1
+
+      if pulseTotal % 100 == 0 then
+        print("Save pulseTotal:"..pulseTotal)
+        file.open("config.ini", "w+")
+        file.write(string.format("%u", pulseTotal))
+        file.write("\n\r")
+        file.close()
+      end
+      rtcmem.write32(40, pulseTotal) --save pulsetotal to memory on address 40
+      print("Heap:"..node.heap())
+
       gpio.write(pinLed,gpio.LOW) 
       if (tmr.now()<pulseOld) then --timer overloaded
         pulseLength = (math.pow (2, 31) - pulseOld + tmr.now()) / 1000
@@ -90,14 +101,6 @@ function sendData()
     m:publish(base.."Pulse",string.format("%.0f",pulseTotal),0,0)  
     m:publish(base.."pulseLength", string.format("%.0f",pulseLength),0,0)  
 
-    if pulseTotal % 100 == 0 then
-      print("Save pulseTotal:"..pulseTotal)
-      file.open("config.ini", "w+")
-      file.write(string.format("%u", pulseTotal))
-      file.write("\n\r")
-      file.close()
-    end
-    rtcmem.write32(40, pulseTotal) --save pulsetotal to memory on address 40
     print("Data sent")
 
   end 
