@@ -116,6 +116,12 @@ end)
  -- on publish message receive event  
 m:on("message", function(conn, topic, data)   
   print("Received:" .. topic .. ":" .. data) 
+  if topic == base.."com" then
+    if data == "ON" then
+      print("Restarting ESP, bye.")
+      node.restart()
+    end
+  end
 end)  
 
 tmr.alarm(0, 1000, 1, function() 
