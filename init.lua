@@ -2,7 +2,7 @@ wifi.setmode(wifi.STATION)
 wifi.sta.config("Datlovo","Nu6kMABmseYwbCoJ7LyG")   ---   SSID and Password for your LAN DHCP here
 
 cfg={
-  ip = "192.168.1.158", 
+  ip = "192.168.1.159", 
   netmask = "255.255.255.0",
   gateway = "192.168.1.1"
 }
@@ -27,7 +27,7 @@ tmr.alarm(0, 1000, 1, function()
     print("\nFile system info:\nTotal : "..total.." Bytes\nUsed : "..used.." Bytes\nRemain: "..remaining.." Bytes")
     print("\nReady")
     dofile("servernode.lua")    --  calls servernode.lua  
-    dofile("energyMeterChata.lua")    --  calls servernode.lua  
+    dofile("energyMeter.lua")    --  calls servernode.lua  
   end
 end)
 

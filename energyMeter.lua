@@ -21,16 +21,6 @@ end
 uart.write(0,"Boot reason:")
 print(heartBeat)
 
-wifi.setmode(wifi.STATION)
-wifi.sta.config("Datlovo","Nu6kMABmseYwbCoJ7LyG")
-cfg={
-  ip = "192.168.1.150",
-  netmask = "255.255.255.0",
-  gateway = "192.168.1.2"
-}
-wifi.sta.setip(cfg)
-wifi.sta.autoconnect(1)
-
 Broker="88.146.202.186"  
 
 pinLed = 3
@@ -175,20 +165,10 @@ end
 
 readConfig()
 
-uart.write(0, "Connecting to Wifi")
-tmr.alarm(0, 1000, 1, function() 
-  uart.write(0,".")
-  if wifi.sta.status() == 5 and wifi.sta.getip() ~= nil then 
-    print ("Wifi connected")
-    print(wifi.sta.getmac())
-    tmr.stop(0) 
-    m:connect(Broker, 31883, 0, 1, function(conn) 
-      mqtt_sub() --run the subscription function 
-      sendHB()
-      print(wifi.sta.getip())
-      print("Mqtt Connected to:" .. Broker.." - "..base) 
-      gpio.trig(pin, "both", pinPulse)
-    end) 
-  end
-end)
-
+m:connect(Broker, 31883, 0, 1, function(conn) 
+  mqtt_sub() --run the subscription function 
+  sendHB()
+  print(wifi.sta.getip())
+  print("Mqtt Connected to:" .. Broker.." - "..base) 
+  gpio.trig(pin, "both", pinPulse)
+end) 
