@@ -21,13 +21,14 @@ end
 uart.write(0,"Boot reason:")
 print(heartBeat)
 
-Broker="88.146.202.186"  
+--Broker="88.146.202.186"  
+Broker="192.168.1.56"  
 
 pinLed = 3
 gpio.mode(pinLed,gpio.OUTPUT)  
 gpio.write(pinLed,gpio.LOW)  
 
-versionSW         = 0.7
+versionSW         = 0.71
 versionSWString   = "EnergyMeter v" 
 print(versionSWString .. versionSW)
 
@@ -110,7 +111,7 @@ function reconnect()
   if wifi.sta.status() == 5 and wifi.sta.getip() ~= nil then 
     print ("Wifi Up!")
     tmr.stop(1) 
-    m:connect(Broker, 31883, 0, 1, function(conn) 
+    m:connect(Broker, 1883, 0, 1, function(conn) 
       print(wifi.sta.getip())
       print("Mqtt Connected to:" .. Broker) 
       mqtt_sub() --run the subscription function 
@@ -165,7 +166,7 @@ end
 
 readConfig()
 
-m:connect(Broker, 31883, 0, 1, function(conn) 
+m:connect(Broker, 1883, 0, 1, function(conn) 
   mqtt_sub() --run the subscription function 
   sendHB()
   print(wifi.sta.getip())
