@@ -1,449 +1,253 @@
-#include <Xively.h>
-#include <XivelyClient.h>
-#include <XivelyDatastream.h>
-#include <XivelyFeed.h>
-#include <HttpClient.h>
-#include <Time.h> 
-#include <MQTT.h>
-#include <EEPROM.h>
-
-/*16.1.2015
-merak chata   628.7
-merak cez   50055.0
-*/
-
-
-extern "C" {
-//#include "user_interface.h"
-}
-
-#define COUNTER_PIN           13
-//#define STATUS_LED            15
-
-#define IoT
-
-float                 tempIN        = 0;
-
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+#include "FS.h"
+
+const char *ssid = "Datlovo";
+const char *password = "Nu6kMABmseYwbCoJ7LyG";
+
+ESP8266WebServer server(80);
+
+#define AIO_SERVER      "178.77.238.20"
+#define AIO_SERVERPORT  1883
+#define AIO_USERNAME    "datel"
+#define AIO_KEY         "hanka12"
+
 WiFiClient client;
 
-/*const char* ssid     = "Datlovo";
-const char* password = "Nu6kMABmseYwbCoJ7LyG";
-*/
-byte status=0;
-unsigned long                lastSendTime      = 0;
-const unsigned long          sendInterval      = 5000; //ms
-unsigned long                startPulse        = 0;
-unsigned int                 pulseLength       = 0;
-volatile unsigned int        pulseCount        = 0;
-unsigned long                pulseTotal        = 0;
-unsigned long                pulseHour         = 0;
-unsigned long                pulseDay          = 0;
-volatile unsigned long       lastPulse         = 0;
-unsigned long                lastPulseOld      = 0;
-unsigned long                consumption       = 0;
-bool                         saveEEPROMEnergy  = false;
-const float                  pulseCountkWh     = 700.f;  //pocet impulsu na 1 kWh
-const float                  WhkWh             = 1000.f;  //pocet Wh na kWh
-const float                  diffForSavekWh    = 0.1f ;    //diference kWh pro zapis do EEPROM
-byte                         minuteOld         = 0;
-byte                         hourOld           = 0;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
 
-#ifdef IoT
-#define AP_SSID "Datlovo"
-#define AP_PASSWORD "Nu6kMABmseYwbCoJ7LyG"
+unsigned int const sendTimeDelay=1000;
+signed long lastSendTime = sendTimeDelay * -1;
 
-#define EIOTCLOUD_USERNAME "datel"
-#define EIOTCLOUD_PASSWORD "mrdatel"
+uint32_t pulseCount = 0;
+uint32_t pulseMillisOld = 0;
 
-// create MQTT object
-#define EIOT_CLOUD_ADDRESS        "cloud.iot-playground.com"
-MQTT myMqtt("", EIOT_CLOUD_ADDRESS, 1883);
+/****************************** Feeds ***************************************/
+Adafruit_MQTT_Publish verSW = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/VersionSW");
+Adafruit_MQTT_Publish hb = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/HeartBeat");
+Adafruit_MQTT_Publish pulse = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/Pulse");
+Adafruit_MQTT_Publish pulseLength = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/pulseLength");
 
-String instanceId                   = "564241f9cf045c757f7e6301";
-String valueStr("");
-boolean result;
-String topic("");
-bool stepOk                         = false;
+// Setup a feed called 'onoff' for subscribing to changes.
+//Adafruit_MQTT_Subscribe onoffbutton = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/onoff");
 
-#define CONFIG_START 0
-#define CONFIG_VERSION "v08"
+#define SERIALSPEED 115200
 
-struct StoreStruct {
-  // This is for mere detection if they are your settings
-  char    version[4];
-  uint    moduleId;  // module id
-  float   energy;
-} storage = {
-  CONFIG_VERSION,
-  3,
-  50057,
-};
+void MQTT_connect(void);
 
-#endif
+const byte ledPin = 13;
+const byte interruptPin = 2;
 
-#include <WiFiUdp.h>
-unsigned int localPort = 8888;      // local port to listen for UDP packets
+void handleRoot()
+{
+  
+	char temp[450];
+	int sec = millis() / 1000;
+	int min = sec / 60;
+	int hr = min / 60;
 
-/* Don't hardwire the IP address or we won't get the benefits of the pool.
- *  Lookup the IP address for the host name instead */
-//IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
-IPAddress timeServerIP; // time.nist.gov NTP server address
-const char* ntpServerName = "ntp.nic.cz";
-const int timeZone = 1;     // Central European Time
+	snprintf(temp, 450,
+		"<html>\
+  <head>\
+    <meta http-equiv='refresh' content='5'/>\
+    <title>ESP8266 Temperatures</title>\
+    <style>\
+      body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+    </style>\
+  </head>\
+  <body>\
+    <h1>Teploty chata</h1>\
+    <p>Uptime: %02d:%02d:%02d</p>\
+	<p>Teplota venku: %02d.%01d&deg;C</p>\
+	<p>Teplota doma: %02d.%01d&deg;C</p>\
+  </body>\
+</html>",
 
-const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
+hr, min % 60, sec % 60, 0, 0
+);
+	server.send(200, "text/html", temp);
+}
 
-byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
+void handleNotFound() {
+	String message = "File Not Found\n\n";
+	message += "URI: ";
+	message += server.uri();
+	message += "\nMethod: ";
+	message += (server.method() == HTTP_GET) ? "GET" : "POST";
+	message += "\nArguments: ";
+	message += server.args();
+	message += "\n";
 
-// A UDP instance to let us send and receive packets over UDP
-WiFiUDP Udp;
-unsigned long lastSetTime;
-#define DATE_DELIMITER "."
-#define TIME_DELIMITER ":"
-#define DATE_TIME_DELIMITER " "
+	for (uint8_t i = 0; i < server.args(); i++) {
+		message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+	}
+
+	server.send(404, "text/plain", message);
+}
+
+float versionSW          = 0.71;
+char versionSWString[]   = "EnergyMeter v";
+byte heartBeat = 10;
+
 
 
 void setup() {
-  Serial.begin(115200);
-  //pinMode(STATUS_LED, OUTPUT);      // sets the digital pin as output
-  //blik(5, 50);
-  // We start by connecting to a WiFi network
-  EEPROM.begin(512);
-  loadConfig();
-
-  Serial.println();
-  Serial.println();
+  Serial.begin(SERIALSPEED);
+  Serial.print(versionSWString);
+  Serial.println(versionSW);
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, HIGH);
   
-  wifiConnect();
-  WiFi.printDiag(Serial);
+  WiFi.begin(ssid, password);
 
-  Serial.println("Starting UDP");
-  Udp.begin(localPort);
-  Serial.print("Local port: ");
-  Serial.println(Udp.localPort());
+	// Wait for connection
+	while (WiFi.status() != WL_CONNECTED) {
+		delay(500);
+		Serial.print(".");
+	}
 
-
-  //lastSendTime = millis();
+	Serial.println("");
+	Serial.print("Connected to ");
+	Serial.println(ssid);
+	Serial.print("IP address: ");
+	Serial.println(WiFi.localIP());
   
-  Serial.println("waiting 20s for time sync...");
-  setSyncProvider(getNtpTime);
-  while (true) {
-    if (timeStatus()==timeSet) {
-      if (year()!=1970) {
-        break;//&& millis()<lastSetTime+20000
-      }
+  SPIFFS.begin();
+  
+  server.on("/", handleRoot);
+	server.on("/inline", []() {
+		server.send(200, "text/plain", "this works as well");
+	});
+	server.onNotFound(handleNotFound);
+	server.begin();
+	Serial.println("HTTP server started");
+
+  //v klidu 0, kladny pulz po dobu xx ms
+  pinMode(interruptPin, INPUT);
+  attachInterrupt(digitalPinToInterrupt(interruptPin), pulseCountEvent, RISING);
+  digitalWrite(ledPin, LOW);
+  
+  // open config file for reading
+  File f;
+  if (SPIFFS.exists("/config.ini")) {
+    f = SPIFFS.open("/config.ini", "r");
+    if (!f) {
+      Serial.println("file open failed");
+    } else {
+      Serial.println("====== Reading config from SPIFFS file =======");
+      String s = f.readStringUntil('\n');
+      Serial.print("Pocet pulzu z config.ini:");
+      Serial.println(s);
+      pulseCount = s.toInt();
     }
-  }; // wait until the time is set by the sync provider, timeout 20sec
-  
-    
-  Serial.println("Time sync interval is set to 3600 second.");
-  setSyncInterval(3600); //sync each 1 hour
-  Serial.print("Now is ");
-  printDateTime();
-  Serial.println(" CET.");
-  lastSetTime=millis();
-
-  setMQTT();
-
-  pinMode(COUNTER_PIN, INPUT);      
-  attachInterrupt(COUNTER_PIN, counterISR, HIGH);
-  
-  pulseTotal=kWh2Pulse(storage.energy);
-  Serial.print("Energy from EEPROM: ");
-  Serial.print(storage.energy);
-  Serial.println(" kWh");
+  } else {
+    f = SPIFFS.open("/config.ini", "w");
+    if (!f) {
+      Serial.println("file open failed");
+    } else {
+      Serial.println("====== Create new config.ini SPIFFS file =======");
+      f.println(0);
+    }
+  }
 }
 
-//------------------------------------------------------------ L O O P -----------------------------------------------------------------------
+uint32_t x=0;
+
 void loop() {
-  if (lastPulse!=lastPulseOld) {
-    if (lastPulse-lastPulseOld>100) {
-      pulseCount++;
-      pulseTotal+=pulseCount;
-      pulseHour+=pulseCount;
-      pulseDay+=pulseCount;
+  // Ensure the connection to the MQTT server is alive (this will make the first
+  // connection and automatically reconnect when disconnected).  See the MQTT_connect
+  // function definition further below.
+  MQTT_connect();
 
-      pulseCount=0;
-      valueStr = String(pulse2kWh(pulseTotal));
-      topic = "/Db/" + instanceId + "/3/Sensor.Parameter2";
-      result = myMqtt.publish(topic, valueStr);
-      valueStr = String(pulse2kWh(pulseHour));
-      topic = "/Db/" + instanceId + "/3/Sensor.Parameter4";
-      result = myMqtt.publish(topic, valueStr);
-      valueStr = String(pulse2kWh(pulseDay));
-      topic = "/Db/" + instanceId + "/3/Sensor.Parameter1";
-      result = myMqtt.publish(topic, valueStr);
+  // Adafruit_MQTT_Subscribe *subscription;
+  // while ((subscription = mqtt.readSubscription(5000))) {
+    // if (subscription == &onoffbutton) {
+      // Serial.print(F("Got: "));
+      // Serial.println((char *)onoffbutton.lastread);
+    // }
+  // }
 
-      Serial.print(". ");
-      printDateTime();
-      Serial.print(" ");
-      Serial.print(lastPulse-lastPulseOld);
-      Serial.print("ms, Cons:");
-      consumption=3600000/(lastPulse-lastPulseOld);
-      Serial.print(consumption);
-      Serial.print("W, Energy:");
-      Serial.print(pulse2kWh(pulseTotal));
-      Serial.print("W ");
-      valueStr = String(consumption);
-      topic = "/Db/" + instanceId + "/3/Sensor.Parameter3";
-      result = myMqtt.publish(topic, valueStr);
-      
-      if (minute() < minuteOld) {
-        minuteOld=0;
-        pulseHour=0;
-      }
-      if (hour() < hourOld) {
-        hourOld=0;
-        pulseDay=0;
-      }
-
-      if (pulse2kWh(pulseTotal)>storage.energy+diffForSavekWh) {
-        Serial.println(pulse2kWh(pulseTotal));
-        Serial.println(pulseTotal);
-        Serial.print("SAVE energy to EEPROM:");
-        storage.energy=pulse2kWh(pulseTotal);
-        Serial.println(storage.energy);
-        saveConfig();
+ if (millis() - lastSendTime >= sendTimeDelay) {
+    lastSendTime = millis();
+    if (! verSW.publish(versionSW)) {
+      Serial.println("failed");
+    } else {
+      Serial.println("OK!");
+    }
+    if (! hb.publish(heartBeat++)) {
+      Serial.println("failed");
+    } else {
+      Serial.println("OK!");
+      if (heartBeat>1) {
+        heartBeat = 0;
       }
     }
-    else {
-      Serial.print("Zakmit:");
-      Serial.println(lastPulse-lastPulseOld);
+    pulseCount++;
+    Serial.println(pulseCount);
+    if (! pulse.publish(pulseCount)) {
+      Serial.println("failed");
+    } else {
+      Serial.println("OK!");
     }
-    lastPulseOld=lastPulse;
   }
-}
-
-//------------------------------------------------------------ F U N C T I O N S --------------------------------------------------------------
-void counterISR() { 
-  lastPulse=millis();
-}
-
-float pulse2kWh(unsigned long pulse) {
-  return (float)pulse/pulseCountkWh;
-}
-
-unsigned long kWh2Pulse(float kWh) {
-  return kWh*pulseCountkWh;
-}
-
-float Wh2kWh(unsigned long Wh) {
-  return (float)(Wh/WhkWh);
-}
-
-void wifiConnect() {
-  Serial.print("Connecting to AP");
-  WiFi.begin(AP_SSID, AP_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  
-  Serial.println("");
-  Serial.println("WiFi connected");  
-}
-
-
-void myConnectedCb() {
-  Serial.println("connected to MQTT server");
-}
-
-void myDisconnectedCb() {
-  Serial.println("disconnected. try to reconnect...");
-  delay(500);
-  myMqtt.connect();
-}
-
-void myPublishedCb() {
-  Serial.println("pub");
-}
-
-void myDataCb(String& topic, String& data) {  
-  Serial.print(topic);
-  Serial.print(": ");
-  Serial.println(data);
-
-  if (topic == String("/Db/InstanceId"))
-  {
-    //instanceId = data;
-    stepOk = true;
-  }
-  else if (topic ==  String("/Db/"+instanceId+"/NewModule"))
-  {
-    storage.moduleId = data.toInt();
-    stepOk = true;
-  }
-  else if (topic == String("/Db/"+instanceId+"/"+String(storage.moduleId)+ "/Sensor.Parameter1/NewParameter"))
-  {
-    stepOk = true;
-  }
-  else if (topic == String("/Db/"+instanceId+"/"+String(storage.moduleId)+ "/Settings.Icon1/NewParameter"))
-  {
-    stepOk = true;
-  } /*else if (topic == String("/Db/"+instanceId+"/3/Sensor.Parameter2")) {
-    energy = data.toFloat();
-    Serial.print("Energy = ");
-    Serial.println(energy);
-    //saveConfig();
-  }*/
-}
-
-String macToStr(const uint8_t* mac) {
-  String result;
-  for (int i = 0; i < 6; ++i) {
-    result += String(mac[i], 16);
-    if (i < 5)
-      result += ':';
-  }
-  return result;
-}
-
-void setMQTT() {
-  String clientName;
-  //clientName += "esp8266-";
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  clientName += macToStr(mac);
-  clientName += "-";
-  clientName += String(micros() & 0xff, 16);
-  myMqtt.setClientId((char*) clientName.c_str());
-
-
-  Serial.print("MQTT client id:");
-  Serial.println(clientName);
-
-  // setup callbacks
-  myMqtt.onConnected(myConnectedCb);
-  myMqtt.onDisconnected(myDisconnectedCb);
-  myMqtt.onPublished(myPublishedCb);
-  myMqtt.onData(myDataCb);
-  
-  //////Serial.println("connect mqtt...");
-  myMqtt.setUserPwd(EIOTCLOUD_USERNAME, EIOTCLOUD_PASSWORD);  
-  myMqtt.connect();
-
-  delay(500);
-
-  //get instance id
-  //////Serial.println("suscribe: Db/InstanceId");
-  myMqtt.subscribe("/Db/InstanceId");
-
-  waitOk();
-
-  Serial.print("ModuleId: ");
-  Serial.println(storage.moduleId);
-
+  // ping the server to keep the mqtt connection alive
+  // NOT required if you are publishing once every KEEPALIVE seconds
   /*
-  Serial.print("Subscribe ");
-  myMqtt.subscribe("/Db/"+instanceId+"/3/Sensor.Parameter2");
-  Serial.println(" OK.");
+  if(! mqtt.ping()) {
+    mqtt.disconnect();
+  }
   */
 
-}
-
-void waitOk()
-{
-  while(!stepOk)
-    delay(100);
- 
-  stepOk = false;
-}
-
-void saveConfig() {
-  for (unsigned int t=0; t<sizeof(storage); t++)
-    EEPROM.write(CONFIG_START + t, *((char*)&storage + t));
-
-  EEPROM.commit();
+  server.handleClient();
 }
 
 
-void blik(byte count, unsigned int del) {
-  for (int i=0; i<count; i++) {
-    delay(del);
-    //digitalWrite(STATUS_LED,HIGH);
-    delay(del);
-    //digitalWrite(STATUS_LED,LOW);
+// Function to connect and reconnect as necessary to the MQTT server.
+// Should be called in the loop function and it will take care if connecting.
+void MQTT_connect() {
+  int8_t ret;
+
+  // Stop if already connected.
+  if (mqtt.connected()) {
+    return;
   }
+
+  Serial.print("Connecting to MQTT... ");
+
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+       Serial.println(mqtt.connectErrorString(ret));
+       Serial.println("Retrying MQTT connection in 5 seconds...");
+       mqtt.disconnect();
+       delay(5000);  // wait 5 seconds
+       retries--;
+       if (retries == 0) {
+         // basically die and wait for WDT to reset me
+         while (1);
+       }
+  }
+  Serial.println("MQTT Connected!");
 }
 
-void loadConfig() {
-  // To make sure there are settings, and they are YOURS!
-  // If nothing is found it will use the default settings.
-  if (EEPROM.read(CONFIG_START + 0) == CONFIG_VERSION[0] &&
-      EEPROM.read(CONFIG_START + 1) == CONFIG_VERSION[1] &&
-      EEPROM.read(CONFIG_START + 2) == CONFIG_VERSION[2])
-    for (unsigned int t=0; t<sizeof(storage); t++)
-      *((char*)&storage + t) = EEPROM.read(CONFIG_START + t);
-}
-
-/*-------- NTP code ----------*/
-long getNtpTime() {
-  WiFi.hostByName(ntpServerName, timeServerIP); 
-
-  while (Udp.parsePacket() > 0) ; // discard any previously received packets
-  Serial.println("Transmit NTP Request");
-  sendNTPpacket(timeServerIP);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = Udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Serial.println("Receive NTP Response");
-      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
+void pulseCountEvent() {
+  if (millis() - pulseMillisOld>100) {
+    pulseCount++;
+    Serial.println(pulseCount);
+    if (! pulse.publish(pulseCount)) {
+      Serial.println("failed");
+    } else {
+      Serial.println("OK!");
+    }
+    if (pulseMillisOld>0) {
+      if (! pulseLength.publish((uint32_t)millis() - pulseMillisOld)) {
+        Serial.println("failed");
+      } else {
+        Serial.println("OK!");
+      }
     }
   }
-  Serial.println("No NTP Response :-(");
-  return 0; // return 0 if unable to get the time
-}
-
-// send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress &address) {
-  Serial.println("sending NTP packet...");
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:                 
-  Udp.beginPacket(address, 123); //NTP requests are to port 123
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
-}
-
-
-void printDateTime() {
-	Serial.print(day());
-	Serial.print(DATE_DELIMITER);
-	Serial.print(month());
-	Serial.print(DATE_DELIMITER);
-	Serial.print(year());
-	Serial.print(DATE_TIME_DELIMITER);
-	printDigits(hour());
-	Serial.print(TIME_DELIMITER);
-	printDigits(minute());
-	Serial.print(TIME_DELIMITER);
-	printDigits(second());
-}
-void printDigits(int digits){
-  // utility function for digital clock display: prints preceding colon and leading 0
-  if(digits < 10) {
-    Serial.print('0');
-  }
-  Serial.print(digits);
+  pulseMillisOld = millis();
 }

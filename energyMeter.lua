@@ -158,10 +158,11 @@ function readConfig()
   print("PulseTotal from file:"..pulseTotal)
   val = rtcmem.read32(40, 1) -- Read the values in slots 41
   print("PulseTotal from EEPROM:"..val)
-  if (val - pulseTotal<100) then
+  if (val > 0 and val - pulseTotal<100) then
     pulseTotal = val
     print("Correct pulseTotal from EEPROM:"..pulseTotal)
   end
+  print("PulseTotal:"..pulseTotal)
   rtcmem.write32(40, pulseTotal) --save pulsetotal to memory on address 40
 end
 
