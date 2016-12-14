@@ -88,6 +88,12 @@ void handleNotFound() {
 	server.send(404, "text/plain", message);
 }
 
+extern "C" {
+  #include "user_interface.h"
+}
+
+#define RTC_ADR 64
+
 float versionSW          = 0.71;
 char versionSWString[]   = "EnergyMeter v";
 byte heartBeat = 10;
@@ -152,6 +158,7 @@ void setup() {
       f.println(0);
     }
   }
+  pulseCount = readRTCMem();
 }
 
 uint32_t x=0;
@@ -194,6 +201,7 @@ void loop() {
       Serial.println("OK!");
       lastSendTime = millis();
     }
+    writeRTCMem(pulseCount);
   }
   // ping the server to keep the mqtt connection alive
   // NOT required if you are publishing once every KEEPALIVE seconds
@@ -221,15 +229,15 @@ void MQTT_connect() {
 
   uint8_t retries = 3;
   while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-       Serial.println(mqtt.connectErrorString(ret));
-       Serial.println("Retrying MQTT connection in 5 seconds...");
-       mqtt.disconnect();
-       delay(5000);  // wait 5 seconds
-       retries--;
-       if (retries == 0) {
-         // basically die and wait for WDT to reset me
-         while (1);
-       }
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    mqtt.disconnect();
+    delay(5000);  // wait 5 seconds
+    retries--;
+    if (retries == 0) {
+     // basically die and wait for WDT to reset me
+     while (1);
+    }
   }
   Serial.println("MQTT Connected!");
 }
@@ -254,4 +262,30 @@ void pulseCountEvent() {
     }
   }
   pulseMillisOld = millis();
+}
+
+uint32_t readRTCMem() {
+  byte rtcStore[4];
+  uint32_t val;
+  system_rtc_mem_read(RTC_ADR, rtcStore, 4);
+  // Serial.println();
+  // Serial.print(rtcStore[0]);
+  // Serial.print(":");
+  // Serial.print(rtcStore[1]);
+  // Serial.print(":");
+  // Serial.print(rtcStore[2]);
+  // Serial.print(":");
+  // Serial.print(rtcStore[3]);
+  val = rtcStore[0] | rtcStore[1] << 8 | rtcStore[2] << 16 | rtcStore[3] << 4;
+  // Serial.println(val);
+  return val;
+}
+
+void writeRTCMem(uint32_t val) {
+  byte rtcStore[4];
+  rtcStore[0] = (val >> 0)  & 0xFFFF;
+  rtcStore[1] = (val >> 8)  & 0xFFFF;
+  rtcStore[2] = (val >> 16) & 0xFFFF;
+  rtcStore[3] = (val >> 24) & 0xFFFF;
+  system_rtc_mem_write(RTC_ADR, rtcStore, 4);
 }
