@@ -171,16 +171,17 @@ void loop() {
   // }
 
  if (millis() - lastSendTime >= sendTimeDelay) {
-    lastSendTime = millis();
     if (! verSW.publish(versionSW)) {
       Serial.println("failed");
     } else {
       Serial.println("OK!");
+      lastSendTime = millis();
     }
     if (! hb.publish(heartBeat++)) {
       Serial.println("failed");
     } else {
       Serial.println("OK!");
+      lastSendTime = millis();
       if (heartBeat>1) {
         heartBeat = 0;
       }
@@ -191,6 +192,7 @@ void loop() {
       Serial.println("failed");
     } else {
       Serial.println("OK!");
+      lastSendTime = millis();
     }
   }
   // ping the server to keep the mqtt connection alive
@@ -240,12 +242,14 @@ void pulseCountEvent() {
       Serial.println("failed");
     } else {
       Serial.println("OK!");
+      lastSendTime=millis();
     }
     if (pulseMillisOld>0) {
       if (! pulseLength.publish((uint32_t)millis() - pulseMillisOld)) {
         Serial.println("failed");
       } else {
         Serial.println("OK!");
+        lastSendTime=millis();
       }
     }
   }
