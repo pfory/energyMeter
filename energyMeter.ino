@@ -109,6 +109,9 @@ void setup() {
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
   
+  Serial.println(ESP.getResetReason());
+  //Serial.println(ESP.getFlashChipRealSize);
+  //Serial.println(ESP.getCpuFreqMHz);
   WiFi.begin(ssid, password);
 
 	// Wait for connection
@@ -197,7 +200,7 @@ void loop() {
     
     writeRTCMem(pulseCount);
     
-    if (pulseCount%100==0) {
+    if (pulseCount%10==0) {
       writePulseToFile(pulseCount);
     }
   }
@@ -288,7 +291,7 @@ void writeRTCMem(uint32_t val) {
   system_rtc_mem_write(RTC_ADR, rtcStore, 4);
 }
 
-void writePulseToFile(unsigned long pocet) {
+void writePulseToFile(uint32_t pocet) {
   f = SPIFFS.open("/config.ini", "w");
   if (!f) {
     Serial.println("file open failed");
@@ -296,7 +299,8 @@ void writePulseToFile(unsigned long pocet) {
     Serial.print("Zapisuji pocet pulzu ");
     Serial.print(pocet);
     Serial.print(" do souboru config.ini.");
-    f.println(pocet);
+    f.print(pocet);
+    f.println();
   }
 }
 
