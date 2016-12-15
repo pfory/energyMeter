@@ -41,6 +41,8 @@ void MQTT_connect(void);
 const byte ledPin = 13;
 const byte interruptPin = 2;
 
+File f;
+
 void handleRoot()
 {
   
@@ -137,31 +139,22 @@ void setup() {
   digitalWrite(ledPin, LOW);
   
   // open config file for reading
-  File f;
   if (SPIFFS.exists("/config.ini")) {
-    f = SPIFFS.open("/config.ini", "r");
-    if (!f) {
-      Serial.println("file open failed");
-    } else {
-      Serial.println("====== Reading config from SPIFFS file =======");
-      String s = f.readStringUntil('\n');
-      Serial.print("Pocet pulzu z config.ini:");
-      Serial.println(s);
-      pulseCount = s.toInt();
-    }
+    pulseCount = readPulseFromFile();
   } else {
-    f = SPIFFS.open("/config.ini", "w");
-    if (!f) {
-      Serial.println("file open failed");
-    } else {
-      Serial.println("====== Create new config.ini SPIFFS file =======");
-      f.println(0);
-    }
+    writePulseToFile(0);
   }
-  pulseCount = readRTCMem();
+  unsigned long pulseCountMem = readRTCMem();
+  Serial.print("Pocet pulzu z RTC pameti:");
+  Serial.println(pulseCountMem);
+  
+  if (pulseCountMem > 0 && pulseCountMem - pulseCount<100) {
+    pulseCount = pulseCountMem;
+    Serial.print("Pouziji pocet pulsu z RTM pameti:");
+    Serial.println(pulseCount);
+  }
 }
 
-uint32_t x=0;
 
 void loop() {
   // Ensure the connection to the MQTT server is alive (this will make the first
@@ -201,7 +194,12 @@ void loop() {
       Serial.println("OK!");
       lastSendTime = millis();
     }
+    
     writeRTCMem(pulseCount);
+    
+    if (pulseCount%100==0) {
+      writePulseToFile(pulseCount);
+    }
   }
   // ping the server to keep the mqtt connection alive
   // NOT required if you are publishing once every KEEPALIVE seconds
@@ -288,4 +286,30 @@ void writeRTCMem(uint32_t val) {
   rtcStore[2] = (val >> 16) & 0xFFFF;
   rtcStore[3] = (val >> 24) & 0xFFFF;
   system_rtc_mem_write(RTC_ADR, rtcStore, 4);
+}
+
+void writePulseToFile(unsigned long pocet) {
+  f = SPIFFS.open("/config.ini", "w");
+  if (!f) {
+    Serial.println("file open failed");
+  } else {
+    Serial.print("Zapisuji pocet pulzu ");
+    Serial.print(pocet);
+    Serial.print(" do souboru config.ini.");
+    f.println(pocet);
+  }
+}
+
+unsigned long readPulseFromFile() {
+  f = SPIFFS.open("/config.ini", "r");
+  if (!f) {
+    Serial.println("file open failed");
+    return 0;
+  } else {
+    Serial.println("====== Reading config from SPIFFS file =======");
+    String s = f.readStringUntil('\n');
+    Serial.print("Pocet pulzu z config.ini:");
+    Serial.println(s);
+    return s.toInt();
+  }
 }
