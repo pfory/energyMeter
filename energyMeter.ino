@@ -19,26 +19,29 @@ WiFiClient client;
 
 Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
 
-unsigned int const sendTimeDelay=1000;
-signed long lastSendTime = sendTimeDelay * -1;
+// unsigned int const sendTimeDelay=60000;
+// signed long lastSendTime = sendTimeDelay * -1;
 
-uint32_t pulseCount = 0;
+uint32_t pulseCount     = 0;
 uint32_t pulseMillisOld = 0;
+bool pulseNow           = false;
+uint32_t pulseLengthMs  = 0;
 
 /****************************** Feeds ***************************************/
-Adafruit_MQTT_Publish verSW = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/VersionSW");
-Adafruit_MQTT_Publish hb = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/HeartBeat");
-Adafruit_MQTT_Publish pulse = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/Pulse");
-Adafruit_MQTT_Publish pulseLength = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09T/pulseLength");
+Adafruit_MQTT_Publish verSW           = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/VersionSW");
+Adafruit_MQTT_Publish hb              = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/HeartBeat");
+Adafruit_MQTT_Publish pulse           = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/Pulse");
+Adafruit_MQTT_Publish pulseLength     = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/pulseLength");
 
-// Setup a feed called 'onoff' for subscribing to changes.
-//Adafruit_MQTT_Subscribe onoffbutton = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/onoff");
+Adafruit_MQTT_Subscribe setupPulse    = Adafruit_MQTT_Subscribe(&mqtt, "/flat/EnergyMeter/esp09/setupPulse");
+Adafruit_MQTT_Subscribe restart       = Adafruit_MQTT_Subscribe(&mqtt, "/flat/EnergyMeter/esp09/restart");
 
 #define SERIALSPEED 115200
+#define PULSEDIVIDOR 1000
 
 void MQTT_connect(void);
 
-const byte ledPin = 13;
+const byte ledPin = 0;
 const byte interruptPin = 2;
 
 File f;
@@ -96,7 +99,7 @@ extern "C" {
 
 #define RTC_ADR 64
 
-float versionSW          = 0.71;
+float versionSW          = 0.81;
 char versionSWString[]   = "EnergyMeter v";
 byte heartBeat = 10;
 
@@ -110,6 +113,14 @@ void setup() {
   digitalWrite(ledPin, HIGH);
   
   Serial.println(ESP.getResetReason());
+  if (ESP.getResetReason()=="Software/System restart") {
+    heartBeat=11;
+  } else if (ESP.getResetReason()=="Power on") {
+    heartBeat=12;
+  } else if (ESP.getResetReason()=="External System") {
+    heartBeat=13;
+  }
+  
   //Serial.println(ESP.getFlashChipRealSize);
   //Serial.println(ESP.getCpuFreqMHz);
   WiFi.begin(ssid, password);
@@ -154,8 +165,25 @@ void setup() {
   if (pulseCountMem > 0 && pulseCountMem - pulseCount<100) {
     pulseCount = pulseCountMem;
     Serial.print("Pouziji pocet pulsu z RTM pameti:");
-    Serial.println(pulseCount);
+  } else {
+    Serial.print("Pouziji pocet pulsu z config.ini");
   }
+  Serial.println(pulseCount);
+  mqtt.subscribe(&setupPulse);
+  mqtt.subscribe(&restart);
+
+  MQTT_connect();
+  if (! verSW.publish(versionSW)) {
+    Serial.println("failed");
+  } else {
+    Serial.println("OK!");
+  }
+  if (! hb.publish(heartBeat++)) {
+    Serial.println("failed");
+  } else {
+    Serial.println("OK!");
+  }
+  heartBeat = 0;
 }
 
 
@@ -165,44 +193,64 @@ void loop() {
   // function definition further below.
   MQTT_connect();
 
-  // Adafruit_MQTT_Subscribe *subscription;
-  // while ((subscription = mqtt.readSubscription(5000))) {
-    // if (subscription == &onoffbutton) {
-      // Serial.print(F("Got: "));
-      // Serial.println((char *)onoffbutton.lastread);
-    // }
-  // }
+  Adafruit_MQTT_Subscribe *subscription;
+  while ((subscription = mqtt.readSubscription(5000))) {
+    if (subscription == &setupPulse) {
+      Serial.print(F("Set new pulse to: "));
+      char *pNew = (char *)setupPulse.lastread;
+      uint32_t pCount=atol(pNew); 
+      Serial.println(pCount);
+      writePulseToFile(pCount);
+      pulseCount=pCount;
+    }
+    if (subscription == &restart) {
+      char *pNew = (char *)restart.lastread;
+      uint32_t pPassw=atol(pNew); 
+      if (pPassw==650419) {
+        Serial.print(F("Restart ESP now!"));
+        ESP.restart();
+      } else {
+        Serial.print(F("Wrong password."));
+      }
+    }
+  }
 
- if (millis() - lastSendTime >= sendTimeDelay) {
+ if (pulseNow) {
+    pulseNow=false;
+    digitalWrite(ledPin, HIGH);
+    Serial.println(millis());
     if (! verSW.publish(versionSW)) {
       Serial.println("failed");
     } else {
       Serial.println("OK!");
-      lastSendTime = millis();
     }
     if (! hb.publish(heartBeat++)) {
       Serial.println("failed");
     } else {
       Serial.println("OK!");
-      lastSendTime = millis();
-      if (heartBeat>1) {
-        heartBeat = 0;
-      }
     }
-    pulseCount++;
-    Serial.println(pulseCount);
+    if (heartBeat>1) {
+      heartBeat = 0;
+    }
     if (! pulse.publish(pulseCount)) {
       Serial.println("failed");
     } else {
       Serial.println("OK!");
-      lastSendTime = millis();
     }
-    
+    if (pulseMillisOld>0) {
+      if (! pulseLength.publish(pulseLengthMs)) {
+        Serial.println("failed");
+      } else {
+        Serial.println("OK!");
+      }
+    }
     writeRTCMem(pulseCount);
-    
-    if (pulseCount%10==0) {
+  
+    if (pulseCount%PULSEDIVIDOR==0) {
       writePulseToFile(pulseCount);
     }
+    digitalWrite(ledPin, LOW);
+  
   }
   // ping the server to keep the mqtt connection alive
   // NOT required if you are publishing once every KEEPALIVE seconds
@@ -244,25 +292,14 @@ void MQTT_connect() {
 }
 
 void pulseCountEvent() {
-  if (millis() - pulseMillisOld>100) {
+  if (millis() - pulseMillisOld>50) {
     pulseCount++;
+    pulseLengthMs=millis() - pulseMillisOld;
+    pulseMillisOld = millis();
     Serial.println(pulseCount);
-    if (! pulse.publish(pulseCount)) {
-      Serial.println("failed");
-    } else {
-      Serial.println("OK!");
-      lastSendTime=millis();
-    }
-    if (pulseMillisOld>0) {
-      if (! pulseLength.publish((uint32_t)millis() - pulseMillisOld)) {
-        Serial.println("failed");
-      } else {
-        Serial.println("OK!");
-        lastSendTime=millis();
-      }
-    }
+    Serial.println(pulseLengthMs);
+    pulseNow=true;
   }
-  pulseMillisOld = millis();
 }
 
 uint32_t readRTCMem() {
@@ -301,6 +338,7 @@ void writePulseToFile(uint32_t pocet) {
     Serial.print(" do souboru config.ini.");
     f.print(pocet);
     f.println();
+    f.close();
   }
 }
 
@@ -314,6 +352,7 @@ unsigned long readPulseFromFile() {
     String s = f.readStringUntil('\n');
     Serial.print("Pocet pulzu z config.ini:");
     Serial.println(s);
+    f.close();
     return s.toInt();
   }
 }
