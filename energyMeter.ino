@@ -162,7 +162,7 @@ void setup() {
   Serial.print("Pocet pulzu z RTC pameti:");
   Serial.println(pulseCountMem);
   
-  if (pulseCountMem > 0 && pulseCountMem - pulseCount<100) {
+  if (pulseCountMem > 0 && pulseCountMem - pulseCount<1000) {
     pulseCount = pulseCountMem;
     Serial.print("Pouziji pocet pulsu z RTM pameti:");
   } else {
