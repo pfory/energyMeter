@@ -1,6 +1,5 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
-#include <ESP8266WebServer.h>
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
 #include "FS.h"
@@ -8,7 +7,11 @@
 const char *ssid = "Datlovo";
 const char *password = "Nu6kMABmseYwbCoJ7LyG";
 
+//#define webserver +13 724 flash +3 812 memory
+#ifdef webserver
+#include <ESP8266WebServer.h>
 ESP8266WebServer server(80);
+#endif
 
 #define AIO_SERVER      "178.77.238.20"
 #define AIO_SERVERPORT  1883
@@ -19,13 +22,13 @@ WiFiClient client;
 
 Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
 
-// unsigned int const sendTimeDelay=60000;
-// signed long lastSendTime = sendTimeDelay * -1;
+unsigned int const sendTimeDelay      = 60000;
+signed long lastSendTime              = sendTimeDelay * -1;
 
-uint32_t pulseCount     = 0;
-uint32_t pulseMillisOld = 0;
-bool pulseNow           = false;
-uint32_t pulseLengthMs  = 0;
+uint32_t pulseCount                   = 0;
+uint32_t pulseMillisOld               = 0;
+bool pulseNow                         = false;
+uint32_t pulseLengthMs                = 0;
 
 /****************************** Feeds ***************************************/
 Adafruit_MQTT_Publish verSW           = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/VersionSW");
@@ -41,11 +44,12 @@ Adafruit_MQTT_Subscribe restart       = Adafruit_MQTT_Subscribe(&mqtt, "/flat/En
 
 void MQTT_connect(void);
 
-const byte ledPin = 0;
+const byte ledPin       = 0;
 const byte interruptPin = 2;
 
 File f;
 
+#ifdef webserver
 void handleRoot()
 {
   
@@ -92,6 +96,7 @@ void handleNotFound() {
 
 	server.send(404, "text/plain", message);
 }
+#endif
 
 extern "C" {
   #include "user_interface.h"
@@ -99,7 +104,7 @@ extern "C" {
 
 #define RTC_ADR 64
 
-float versionSW          = 0.81;
+float versionSW          = 0.82;
 char versionSWString[]   = "EnergyMeter v";
 byte heartBeat = 10;
 
@@ -146,7 +151,8 @@ void setup() {
 	Serial.println(WiFi.localIP());
   
   SPIFFS.begin();
-  
+
+#ifdef webserver
   server.on("/", handleRoot);
 	server.on("/inline", []() {
 		server.send(200, "text/plain", "this works as well");
@@ -154,6 +160,7 @@ void setup() {
 	server.onNotFound(handleNotFound);
 	server.begin();
 	Serial.println("HTTP server started");
+#endif
 
   //v klidu 0, kladny pulz po dobu xx ms
   pinMode(interruptPin, INPUT);
@@ -223,10 +230,9 @@ void loop() {
     }
   }
 
- if (pulseNow) {
-    pulseNow=false;
-    digitalWrite(ledPin, HIGH);
-    Serial.println(millis());
+  
+  if (millis() - lastSendTime >= sendTimeDelay) {
+    lastSendTime = millis();
     if (! verSW.publish(versionSW)) {
       Serial.println("failed");
     } else {
@@ -240,6 +246,12 @@ void loop() {
     if (heartBeat>1) {
       heartBeat = 0;
     }
+  }
+  
+  if (pulseNow) {
+    pulseNow=false;
+    digitalWrite(ledPin, HIGH);
+    //Serial.println(millis());
     if (! pulse.publish(pulseCount)) {
       Serial.println("failed");
     } else {
@@ -267,8 +279,9 @@ void loop() {
     mqtt.disconnect();
   }
   */
-
+#ifdef webserver
   server.handleClient();
+#endif
 }
 
 
