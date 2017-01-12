@@ -35,6 +35,7 @@ Adafruit_MQTT_Publish verSW           = Adafruit_MQTT_Publish(&mqtt,  "/flat/Ene
 Adafruit_MQTT_Publish hb              = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/HeartBeat");
 Adafruit_MQTT_Publish pulse           = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/Pulse");
 Adafruit_MQTT_Publish pulseLength     = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/pulseLength");
+Adafruit_MQTT_Publish resetInfoString = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/resetInfo");
 
 Adafruit_MQTT_Subscribe setupPulse    = Adafruit_MQTT_Subscribe(&mqtt, "/flat/EnergyMeter/esp09/setupPulse");
 Adafruit_MQTT_Subscribe restart       = Adafruit_MQTT_Subscribe(&mqtt, "/flat/EnergyMeter/esp09/restart");
@@ -108,7 +109,7 @@ float versionSW          = 0.82;
 char versionSWString[]   = "EnergyMeter v";
 byte heartBeat = 10;
 
-
+String rInfo;
 
 void setup() {
   Serial.begin(SERIALSPEED);
@@ -133,6 +134,8 @@ void setup() {
   } else if (ESP.getResetReason()=="Deep-Sleep Wake") {
     heartBeat=17;
   }
+  
+  rInfo = ESP.getResetInfo();
   
   //Serial.println(ESP.getFlashChipRealSize);
   //Serial.println(ESP.getCpuFreqMHz);
@@ -199,6 +202,11 @@ void setup() {
     Serial.println("OK!");
   }
   heartBeat = 0;
+  if (! resetInfoString.publish(rInfo.c_str())) {
+    Serial.println("failed");
+  } else {
+    Serial.println("OK!");
+  }
 }
 
 
