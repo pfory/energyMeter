@@ -2,7 +2,7 @@
 --------------------------------------------------------------------------------------------------------------------------
 Petr Fory pfory@seznam.cz
 GIT - https://github.com/pfory/energyMeter
-//SONOFF
+//ESP8266-01 !!!!!!!SPIFSS!!!!!!!!
 */
 #include "Configuration.h"
 
@@ -13,6 +13,7 @@ GIT - https://github.com/pfory/energyMeter
 #include "Sender.h"
 #include <Wire.h>
 #include <PubSubClient.h>
+#include <FS.h>          
 
 #ifdef ota
 #include <ArduinoOTA.h>
@@ -38,8 +39,12 @@ time_t getNtpTime();
 #endif
 
 
-uint32_t heartBeat                          = 0;
-   
+uint32_t      heartBeat                           = 0;
+
+uint32_t      pulseCount                          = 0;
+uint32_t      pulseMillisOld                      = 0;
+bool          pulseNow                            = false;
+uint32_t      pulseLengthMs                       = 0;
 
 bool isDebugEnabled() {
 #ifdef verbose
@@ -286,6 +291,31 @@ void setup() {
   ArduinoOTA.begin();
 #endif
 
+
+  //v klidu 0, kladny pulz po dobu xx ms
+  pinMode(INTERRUPTPIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(INTERRUPTPIN), pulseCountEvent, RISING);
+  
+  // open config file for reading
+  if (SPIFFS.exists("/config.ini")) {
+    pulseCount = readPulseFromFile();
+  } else {
+    writePulseToFile(0);
+  }
+  unsigned long pulseCountMem = readRTCMem();
+  Serial.print("Pocet pulzu z RTC pameti:");
+  Serial.println(pulseCountMem);
+  
+  if (pulseCountMem > 0 && pulseCountMem - pulseCount<1000) {
+    pulseCount = pulseCountMem;
+    Serial.print("Pouziji pocet pulsu z RTM pameti:");
+  } else {
+    Serial.print("Pouziji pocet pulsu z config.ini");
+  }
+  Serial.println(pulseCount);
+  mqtt.subscribe(&setupPulse);
+  mqtt.subscribe(&restart);
+
 #ifdef timers
   //setup timers
   timer.every(SENDSTAT_DELAY, sendStatisticHA);
@@ -356,5 +386,72 @@ void reconnect() {
       // Wait 5 seconds before retrying
       delay(5000);
     }
+  }
+}
+
+
+void pulseCountEvent() {
+  if (millis() - pulseMillisOld>50) {
+    pulseCount++;
+    pulseLengthMs=millis() - pulseMillisOld;
+    pulseMillisOld = millis();
+    Serial.println(pulseCount);
+    Serial.println(pulseLengthMs);
+    pulseNow=true;
+  }
+}
+
+uint32_t readRTCMem() {
+  byte rtcStore[4];
+  uint32_t val;
+  system_rtc_mem_read(RTC_ADR, rtcStore, 4);
+  // Serial.println();
+  // Serial.print(rtcStore[0]);
+  // Serial.print(":");
+  // Serial.print(rtcStore[1]);
+  // Serial.print(":");
+  // Serial.print(rtcStore[2]);
+  // Serial.print(":");
+  // Serial.print(rtcStore[3]);
+  val = rtcStore[0] | rtcStore[1] << 8 | rtcStore[2] << 16 | rtcStore[3] << 4;
+  // Serial.println(val);
+  return val;
+}
+
+void writeRTCMem(uint32_t val) {
+  byte rtcStore[4];
+  rtcStore[0] = (val >> 0)  & 0xFFFF;
+  rtcStore[1] = (val >> 8)  & 0xFFFF;
+  rtcStore[2] = (val >> 16) & 0xFFFF;
+  rtcStore[3] = (val >> 24) & 0xFFFF;
+  system_rtc_mem_write(RTC_ADR, rtcStore, 4);
+}
+
+void writePulseToFile(uint32_t pocet) {
+  f = SPIFFS.open("/config.ini", "w");
+  if (!f) {
+    Serial.println("file open failed");
+  } else {
+    Serial.print("Zapisuji pocet pulzu ");
+    Serial.print(pocet);
+    Serial.print(" do souboru config.ini.");
+    f.print(pocet);
+    f.println();
+    f.close();
+  }
+}
+
+unsigned long readPulseFromFile() {
+  f = SPIFFS.open("/config.ini", "r");
+  if (!f) {
+    Serial.println("file open failed");
+    return 0;
+  } else {
+    Serial.println("====== Reading config from SPIFFS file =======");
+    String s = f.readStringUntil('\n');
+    Serial.print("Pocet pulzu z config.ini:");
+    Serial.println(s);
+    f.close();
+    return s.toInt();
   }
 }
