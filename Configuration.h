@@ -37,11 +37,13 @@
 #define LEDPIN                BUILTIN_LED //0
 #define INTERRUPTPIN          2
 
+#define RTC_ADR               65
+
 char                  mqtt_server[40]       = "192.168.1.56";
 uint16_t              mqtt_port             = 1883;
 char                  mqtt_username[40]     = "datel";
 char                  mqtt_key[20]          = "hanka12";
-char                  mqtt_base[60]         = "/home/EnergyMeter/esp02";
+char                  mqtt_base[60]         = "/home/EnergyMeter/esp02a";
 char                  static_ip[16]         = "192.168.1.141";
 char                  static_gw[16]         = "192.168.1.1";
 char                  static_sn[16]         = "255.255.255.0";

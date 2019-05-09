@@ -296,8 +296,10 @@ void setup() {
   pinMode(INTERRUPTPIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(INTERRUPTPIN), pulseCountEvent, RISING);
   
+  SPIFFS.begin();
   // open config file for reading
   if (SPIFFS.exists("/config.ini")) {
+    DEBUG_PRINTLN("Raed from /config.ini");
     pulseCount = readPulseFromFile();
   } else {
     writePulseToFile(0);
@@ -308,13 +310,13 @@ void setup() {
   
   if (pulseCountMem > 0 && pulseCountMem - pulseCount<1000) {
     pulseCount = pulseCountMem;
-    Serial.print("Pouziji pocet pulsu z RTM pameti:");
+    Serial.print("Pouziji pocet pulsu z RTM pameti :");
   } else {
-    Serial.print("Pouziji pocet pulsu z config.ini");
+    Serial.print("Pouziji pocet pulsu z config.ini :");
   }
   Serial.println(pulseCount);
-  mqtt.subscribe(&setupPulse);
-  mqtt.subscribe(&restart);
+  // mqtt.subscribe(&setupPulse);
+  // mqtt.subscribe(&restart);
 
 #ifdef timers
   //setup timers
@@ -343,6 +345,11 @@ void loop() {
   ArduinoOTA.handle();
 #endif
 
+  if (pulseNow) {
+    writeRTCMem();
+    sendDataHA();
+  }
+
   if (!client.connected()) {
     reconnect();
   }
@@ -368,6 +375,22 @@ bool sendStatisticHA(void *) {
   return true;
 }
 
+void sendDataHA(void) {
+  //printSystemTime();
+  digitalWrite(LEDPIN, LOW);
+  DEBUG_PRINTLN(F(" - I am sending data to HA"));
+
+  SenderClass sender;
+  sender.add("pulseLength", pulseLengthMs);
+  sender.add("Pulse", pulseCount);
+  
+  DEBUG_PRINTLN(F("Calling MQTT"));
+  
+  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  digitalWrite(LEDPIN, HIGH);
+  return true;
+}
+
 void reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
@@ -376,9 +399,9 @@ void reconnect() {
     if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
       DEBUG_PRINTLN("connected");
       //client.subscribe("/home/Switch/com");
-      client.subscribe((String(mqtt_base) + "/" + "com").c_str());
-      DEBUG_PRINT("Substribe topic : ");
-      DEBUG_PRINTLN((String(mqtt_base) + "/" + "com").c_str());
+      //client.subscribe((String(mqtt_base) + "/" + "com").c_str());
+      //DEBUG_PRINT("Substribe topic : ");
+      //DEBUG_PRINTLN((String(mqtt_base) + "/" + "com").c_str());
     } else {
       DEBUG_PRINT("failed, rc=");
       DEBUG_PRINT(client.state());
@@ -418,7 +441,7 @@ uint32_t readRTCMem() {
   return val;
 }
 
-void writeRTCMem(uint32_t val) {
+void +++++++++++n j+(uint32_t val) {
   byte rtcStore[4];
   rtcStore[0] = (val >> 0)  & 0xFFFF;
   rtcStore[1] = (val >> 8)  & 0xFFFF;
@@ -428,7 +451,7 @@ void writeRTCMem(uint32_t val) {
 }
 
 void writePulseToFile(uint32_t pocet) {
-  f = SPIFFS.open("/config.ini", "w");
+  File f = SPIFFS.open("/config.ini", "w");
   if (!f) {
     Serial.println("file open failed");
   } else {
@@ -442,7 +465,7 @@ void writePulseToFile(uint32_t pocet) {
 }
 
 unsigned long readPulseFromFile() {
-  f = SPIFFS.open("/config.ini", "r");
+  File f = SPIFFS.open("/config.ini", "r");
   if (!f) {
     Serial.println("file open failed");
     return 0;
