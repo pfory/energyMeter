@@ -1,387 +1,360 @@
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include "Adafruit_MQTT.h"
-#include "Adafruit_MQTT_Client.h"
-#include "FS.h"
+/*ENERGY Meter
+--------------------------------------------------------------------------------------------------------------------------
+Petr Fory pfory@seznam.cz
+GIT - https://github.com/pfory/energyMeter
+//SONOFF
+*/
+#include "Configuration.h"
 
-const char *ssid = "Datlovo";
-const char *password = "Nu6kMABmseYwbCoJ7LyG";
+#include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+#include <Ticker.h>
+#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
+#include "Sender.h"
+#include <Wire.h>
+#include <PubSubClient.h>
 
-//#define webserver +13 724 flash +3 812 memory
-#ifdef webserver
+#ifdef ota
+#include <ArduinoOTA.h>
+#endif
+
+#ifdef serverHTTP
 #include <ESP8266WebServer.h>
 ESP8266WebServer server(80);
 #endif
 
-#define AIO_SERVER      "178.77.238.20"
-#define AIO_SERVERPORT  1883
-#define AIO_USERNAME    "datel"
-#define AIO_KEY         "hanka12"
-
-WiFiClient client;
-
-Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
-
-unsigned int const sendTimeDelay      = 60000;
-signed long lastSendTime              = sendTimeDelay * -1;
-
-uint32_t pulseCount                   = 0;
-uint32_t pulseMillisOld               = 0;
-bool pulseNow                         = false;
-uint32_t pulseLengthMs                = 0;
-
-/****************************** Feeds ***************************************/
-Adafruit_MQTT_Publish verSW           = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/VersionSW");
-Adafruit_MQTT_Publish hb              = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/HeartBeat");
-Adafruit_MQTT_Publish pulse           = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/Pulse");
-Adafruit_MQTT_Publish pulseLength     = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/pulseLength");
-Adafruit_MQTT_Publish resetInfoString = Adafruit_MQTT_Publish(&mqtt,  "/flat/EnergyMeter/esp09/resetInfo");
-
-Adafruit_MQTT_Subscribe setupPulse    = Adafruit_MQTT_Subscribe(&mqtt, "/flat/EnergyMeter/esp09/setupPulse");
-Adafruit_MQTT_Subscribe restart       = Adafruit_MQTT_Subscribe(&mqtt, "/flat/EnergyMeter/esp09/restart");
-
-#define SERIALSPEED 115200
-#define PULSEDIVIDOR 1000
-
-void MQTT_connect(void);
-
-const byte ledPin       = 0;
-const byte interruptPin = 2;
-
-File f;
-
-#ifdef webserver
-void handleRoot()
-{
-  
-	char temp[450];
-	int sec = millis() / 1000;
-	int min = sec / 60;
-	int hr = min / 60;
-
-	snprintf(temp, 450,
-		"<html>\
-  <head>\
-    <meta http-equiv='refresh' content='5'/>\
-    <title>ESP8266 Temperatures</title>\
-    <style>\
-      body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
-    </style>\
-  </head>\
-  <body>\
-    <h1>Teploty chata</h1>\
-    <p>Uptime: %02d:%02d:%02d</p>\
-	<p>Teplota venku: %02d.%01d&deg;C</p>\
-	<p>Teplota doma: %02d.%01d&deg;C</p>\
-  </body>\
-</html>",
-
-hr, min % 60, sec % 60, 0, 0
-);
-	server.send(200, "text/html", temp);
-}
-
-void handleNotFound() {
-	String message = "File Not Found\n\n";
-	message += "URI: ";
-	message += server.uri();
-	message += "\nMethod: ";
-	message += (server.method() == HTTP_GET) ? "GET" : "POST";
-	message += "\nArguments: ";
-	message += server.args();
-	message += "\n";
-
-	for (uint8_t i = 0; i < server.args(); i++) {
-		message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-	}
-
-	server.send(404, "text/plain", message);
-}
+#ifdef time
+#include <TimeLib.h>
+#include <Timezone.h>
+WiFiUDP EthernetUdp;
+static const char     ntpServerName[]       = "tik.cesnet.cz";
+//const int timeZone = 2;     // Central European Time
+//Central European Time (Frankfurt, Paris)
+TimeChangeRule        CEST                  = {"CEST", Last, Sun, Mar, 2, 120};     //Central European Summer Time
+TimeChangeRule        CET                   = {"CET", Last, Sun, Oct, 3, 60};       //Central European Standard Time
+Timezone CE(CEST, CET);
+unsigned int          localPort             = 8888;  // local port to listen for UDP packets
+time_t getNtpTime();
 #endif
 
-extern "C" {
-  #include "user_interface.h"
+
+uint32_t heartBeat                          = 0;
+   
+
+bool isDebugEnabled() {
+#ifdef verbose
+  return true;
+#endif // verbose
+  return false;
 }
 
-#define RTC_ADR 64
+//for LED status
+#include <Ticker.h>
+Ticker ticker;
 
-float versionSW          = 0.82;
-char versionSWString[]   = "EnergyMeter v";
-byte heartBeat = 10;
+#ifdef timers
+#include <timer.h>
+auto timer = timer_create_default(); // create a timer with default settings
+Timer<> default_timer; // save as above
+#endif
 
-String rInfo;
+//MQTT callback
+void callback(char* topic, byte* payload, unsigned int length) {
+  char * pEnd;
+  long int valL;
+  String val =  String();
+  DEBUG_PRINT("Message arrived [");
+  DEBUG_PRINT(topic);
+  DEBUG_PRINT("] ");
+  for (int i=0;i<length;i++) {
+    DEBUG_PRINT((char)payload[i]);
+    val += (char)payload[i];
+  }
+  DEBUG_PRINTLN();
 
+  // if (strcmp(topic, "/home/Switch/com")==0) {
+    // if (val=="ON") {
+      // digitalWrite(RELAYPIN, HIGH);
+      // DEBUG_PRINTLN(F("ON"));
+    // } else {
+      // digitalWrite(RELAYPIN, LOW);
+      // DEBUG_PRINTLN(F("OFF"));
+    // }
+  // }
+  
+  digitalWrite(LEDPIN, LOW);
+  delay(200);
+  digitalWrite(LEDPIN, HIGH);
+
+}
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+//gets called when WiFiManager enters configuration mode
+void configModeCallback (WiFiManager *myWiFiManager) {
+  DEBUG_PRINTLN("Entered config mode");
+  DEBUG_PRINTLN(WiFi.softAPIP());
+  //if you used auto generated SSID, print it
+  DEBUG_PRINTLN(myWiFiManager->getConfigPortalSSID());
+  //entered config mode, make led toggle faster
+}
+
+void validateInput(const char *input, char *output) {
+  String tmp = input;
+  tmp.trim();
+  tmp.replace(' ', '_');
+  tmp.toCharArray(output, tmp.length() + 1);
+}
+
+ADC_MODE(ADC_VCC); //vcc read
+
+void tick() {
+  //toggle state
+  int state = digitalRead(LEDPIN);  // get the current state of GPIO1 pin
+  digitalWrite(LEDPIN, !state);          // set pin to the opposite state
+}
+
+
+//----------------------------------------------------- S E T U P -----------------------------------------------------------
 void setup() {
-  Serial.begin(SERIALSPEED);
-  Serial.print(versionSWString);
-  Serial.println(versionSW);
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, HIGH);
+  // put your setup code here, to run once:
+  SERIAL_BEGIN;
+  DEBUG_PRINT(F(SW_NAME));
+  DEBUG_PRINT(F(" "));
+  DEBUG_PRINTLN(F(VERSION));
   
-  Serial.println(ESP.getResetReason());
-  if (ESP.getResetReason()=="Software/System restart") {
-    heartBeat=11;
-  } else if (ESP.getResetReason()=="Power on") {
-    heartBeat=12;
-  } else if (ESP.getResetReason()=="External System") {
-    heartBeat=13;
-  } else if (ESP.getResetReason()=="Hardware Watchdog") {
-    heartBeat=14;
-  } else if (ESP.getResetReason()=="Exception") {
-    heartBeat=15;
-  } else if (ESP.getResetReason()=="Software Watchdog") {
-    heartBeat=16;
-  } else if (ESP.getResetReason()=="Deep-Sleep Wake") {
-    heartBeat=17;
-  }
-  
-  rInfo = ESP.getResetInfo();
-  
-  //Serial.println(ESP.getFlashChipRealSize);
-  //Serial.println(ESP.getCpuFreqMHz);
-  WiFi.begin(ssid, password);
+  pinMode(LEDPIN, OUTPUT);
 
-	// Wait for connection
-	while (WiFi.status() != WL_CONNECTED) {
-		delay(500);
-		Serial.print(".");
-	}
-
-	Serial.println("");
-	Serial.print("Connected to ");
-	Serial.println(ssid);
-	Serial.print("IP address: ");
-	Serial.println(WiFi.localIP());
+  ticker.attach(1, tick);
+    
+  WiFi.printDiag(Serial);
+    
+  // bool validConf = readConfig();
+  // if (!validConf) {
+    // DEBUG_PRINTLN(F("ERROR config corrupted"));
+  // }
   
-  SPIFFS.begin();
+  rst_info *_reset_info = ESP.getResetInfoPtr();
+  uint8_t _reset_reason = _reset_info->reason;
+  DEBUG_PRINT("Boot-Mode: ");
+  DEBUG_PRINTLN(_reset_reason);
+  heartBeat = _reset_reason;
 
-#ifdef webserver
-  server.on("/", handleRoot);
-	server.on("/inline", []() {
-		server.send(200, "text/plain", "this works as well");
-	});
-	server.onNotFound(handleNotFound);
-	server.begin();
-	Serial.println("HTTP server started");
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+  
+  // drd.stop();
+
+  // if (_dblreset) {
+    // WiFi.disconnect(); //  this alone is not enough to stop the autoconnecter
+    // WiFi.mode(WIFI_AP);
+  // }
+  
+  //WiFiManager
+  //Local intialization. Once its business is done, there is no need to keep it around
+  WiFiManager wifiManager;
+  //reset settings - for testing
+  //wifiManager.resetSettings();
+  
+  IPAddress _ip,_gw,_sn;
+  _ip.fromString(static_ip);
+  _gw.fromString(static_gw);
+  _sn.fromString(static_sn);
+
+  wifiManager.setSTAStaticIPConfig(_ip, _gw, _sn);
+  
+  DEBUG_PRINTLN(_ip);
+  DEBUG_PRINTLN(_gw);
+  DEBUG_PRINTLN(_sn);
+
+  //wifiManager.setConfigPortalTimeout(60); 
+  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wifiManager.setAPCallback(configModeCallback);
+  
+    //DEBUG_PRINTLN("Double reset detected. Config mode.");
+
+  WiFiManagerParameter custom_mqtt_server("mqtt_server", "MQTT server", mqtt_server, 40);
+  WiFiManagerParameter custom_mqtt_port("mqtt_port", "MQTT server port", String(mqtt_port).c_str(), 5);
+  WiFiManagerParameter custom_mqtt_uname("mqtt_uname", "MQTT username", mqtt_username, 40);
+  WiFiManagerParameter custom_mqtt_key("mqtt_key", "MQTT password", mqtt_key, 20);
+  WiFiManagerParameter custom_mqtt_base("mqtt_base", "MQTT topic end without /", mqtt_base, 60);
+
+  wifiManager.addParameter(&custom_mqtt_server);
+  wifiManager.addParameter(&custom_mqtt_port);
+  wifiManager.addParameter(&custom_mqtt_uname);
+  wifiManager.addParameter(&custom_mqtt_key);
+  wifiManager.addParameter(&custom_mqtt_base);
+
+  //sets timeout until configuration portal gets turned off
+  //useful to make it all retry or go to sleep
+  //in seconds
+  
+  wifiManager.setTimeout(30);
+  wifiManager.setConnectTimeout(30); 
+  //wifiManager.setBreakAfterConfig(true);
+  
+  //set config save notify callback
+  //wifiManager.setSaveConfigCallback(saveConfigCallback);
+  
+  //fetches ssid and pass and tries to connect
+  //if it does not connect it starts an access point with the specified name
+  //here  "AutoConnectAP"
+  //and goes into a blocking loop awaiting configuration
+  if (!wifiManager.autoConnect(AUTOCONNECTNAME, AUTOCONNECTPWD)) { 
+    DEBUG_PRINTLN("failed to connect and hit timeout");
+    delay(3000);
+    //reset and try again, or maybe put it to deep sleep
+    ESP.reset();
+    delay(5000);
+  } 
+  
+  validateInput(custom_mqtt_server.getValue(), mqtt_server);
+  mqtt_port = String(custom_mqtt_port.getValue()).toInt();
+  validateInput(custom_mqtt_uname.getValue(), mqtt_username);
+  validateInput(custom_mqtt_key.getValue(), mqtt_key);
+  validateInput(custom_mqtt_base.getValue(), mqtt_base);
+  
+  // if (shouldSaveConfig) {
+    // saveConfig();
+  // }
+  
+  //if you get here you have connected to the WiFi
+  DEBUG_PRINTLN("CONNECTED");
+  DEBUG_PRINT("Local ip : ");
+  DEBUG_PRINTLN(WiFi.localIP());
+  DEBUG_PRINTLN(WiFi.subnetMask());
+
+#ifdef serverHTTP
+  server.on ( "/", handleRoot );
+  server.begin();
+  DEBUG_PRINTLN ( "HTTP server started!!" );
 #endif
 
-  //v klidu 0, kladny pulz po dobu xx ms
-  pinMode(interruptPin, INPUT);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), pulseCountEvent, RISING);
-  digitalWrite(ledPin, LOW);
+#ifdef time
+  DEBUG_PRINTLN("Setup TIME");
+  EthernetUdp.begin(localPort);
+  DEBUG_PRINT("Local port: ");
+  DEBUG_PRINTLN(EthernetUdp.localPort());
+  DEBUG_PRINTLN("waiting for sync");
+  setSyncProvider(getNtpTime);
+  setSyncInterval(300);
   
-  // open config file for reading
-  if (SPIFFS.exists("/config.ini")) {
-    pulseCount = readPulseFromFile();
-  } else {
-    writePulseToFile(0);
-  }
-  unsigned long pulseCountMem = readRTCMem();
-  Serial.print("Pocet pulzu z RTC pameti:");
-  Serial.println(pulseCountMem);
-  
-  if (pulseCountMem > 0 && pulseCountMem - pulseCount<1000) {
-    pulseCount = pulseCountMem;
-    Serial.print("Pouziji pocet pulsu z RTM pameti:");
-  } else {
-    Serial.print("Pouziji pocet pulsu z config.ini");
-  }
-  Serial.println(pulseCount);
-  mqtt.subscribe(&setupPulse);
-  mqtt.subscribe(&restart);
+  printSystemTime();
+#endif
 
-  MQTT_connect();
-  if (! verSW.publish(versionSW)) {
-    Serial.println("failed");
-  } else {
-    Serial.println("OK!");
-  }
-  if (! hb.publish(heartBeat++)) {
-    Serial.println("failed");
-  } else {
-    Serial.println("OK!");
-  }
-  heartBeat = 0;
-  if (! resetInfoString.publish(rInfo.c_str())) {
-    Serial.println("failed");
-  } else {
-    Serial.println("OK!");
-  }
-}
+#ifdef ota
+  //OTA
+  // Port defaults to 8266
+  // ArduinoOTA.setPort(8266);
+
+  // Hostname defaults to esp8266-[ChipID]
+  ArduinoOTA.setHostname(HOSTNAMEOTA);
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+  ArduinoOTA.onStart([]() {
+    // String type;
+    // if (ArduinoOTA.getCommand() == U_FLASH)
+      // type = "sketch";
+    // else // U_SPIFFS
+      // type = "filesystem";
+
+    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+    //DEBUG_PRINTLN("Start updating " + type);
+    DEBUG_PRINTLN("Start updating ");
+  });
+  ArduinoOTA.onEnd([]() {
+   DEBUG_PRINTLN("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    DEBUG_PRINTF("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    DEBUG_PRINTF("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) DEBUG_PRINTLN("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) DEBUG_PRINTLN("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) DEBUG_PRINTLN("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) DEBUG_PRINTLN("Receive Failed");
+    else if (error == OTA_END_ERROR) DEBUG_PRINTLN("End Failed");
+  });
+  ArduinoOTA.begin();
+#endif
+
+#ifdef timers
+  //setup timers
+  timer.every(SENDSTAT_DELAY, sendStatisticHA);
+#endif
+
+  DEBUG_PRINTLN(" Ready");
+ 
+  ticker.detach();
+  //keep LED on
+  digitalWrite(LEDPIN, HIGH);
+} //setup
 
 
+//----------------------------------------------------- L O O P -----------------------------------------------------------
 void loop() {
-  // Ensure the connection to the MQTT server is alive (this will make the first
-  // connection and automatically reconnect when disconnected).  See the MQTT_connect
-  // function definition further below.
-  MQTT_connect();
+#ifdef timers
+  timer.tick(); // tick the timer
+#endif
 
-  Adafruit_MQTT_Subscribe *subscription;
-  while ((subscription = mqtt.readSubscription(5000))) {
-    if (subscription == &setupPulse) {
-      Serial.print(F("Set new pulse to: "));
-      char *pNew = (char *)setupPulse.lastread;
-      uint32_t pCount=atol(pNew); 
-      Serial.println(pCount);
-      writePulseToFile(pCount);
-      pulseCount=pCount;
-    }
-    if (subscription == &restart) {
-      char *pNew = (char *)restart.lastread;
-      uint32_t pPassw=atol(pNew); 
-      if (pPassw==650419) {
-        Serial.print(F("Restart ESP now!"));
-        ESP.restart();
-      } else {
-        Serial.print(F("Wrong password."));
-      }
-    }
-  }
-
-  
-  if (millis() - lastSendTime >= sendTimeDelay) {
-    lastSendTime = millis();
-    if (! verSW.publish(versionSW)) {
-      Serial.println("failed");
-    } else {
-      Serial.println("OK!");
-    }
-    if (! hb.publish(heartBeat++)) {
-      Serial.println("failed");
-    } else {
-      Serial.println("OK!");
-    }
-    if (heartBeat>1) {
-      heartBeat = 0;
-    }
-  }
-  
-  if (pulseNow) {
-    pulseNow=false;
-    digitalWrite(ledPin, HIGH);
-    //Serial.println(millis());
-    if (! pulse.publish(pulseCount)) {
-      Serial.println("failed");
-    } else {
-      Serial.println("OK!");
-    }
-    if (pulseMillisOld>0) {
-      if (! pulseLength.publish(pulseLengthMs)) {
-        Serial.println("failed");
-      } else {
-        Serial.println("OK!");
-      }
-    }
-    writeRTCMem(pulseCount);
-  
-    if (pulseCount%PULSEDIVIDOR==0) {
-      writePulseToFile(pulseCount);
-    }
-    digitalWrite(ledPin, LOW);
-  
-  }
-  // ping the server to keep the mqtt connection alive
-  // NOT required if you are publishing once every KEEPALIVE seconds
-  /*
-  if(! mqtt.ping()) {
-    mqtt.disconnect();
-  }
-  */
-#ifdef webserver
+#ifdef serverHTTP
   server.handleClient();
 #endif
+
+#ifdef ota
+  ArduinoOTA.handle();
+#endif
+
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+} //loop
+
+
+bool sendStatisticHA(void *) {
+  //printSystemTime();
+  digitalWrite(LEDPIN, LOW);
+  DEBUG_PRINTLN(F(" - I am sending statistic to HA"));
+
+  SenderClass sender;
+  sender.add("VersionSW", VERSION);
+  sender.add("Napeti",  ESP.getVcc());
+  sender.add("HeartBeat", heartBeat++);
+  sender.add("RSSI", WiFi.RSSI());
+  
+  DEBUG_PRINTLN(F("Calling MQTT"));
+  
+  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  digitalWrite(LEDPIN, HIGH);
+  return true;
 }
 
-
-// Function to connect and reconnect as necessary to the MQTT server.
-// Should be called in the loop function and it will take care if connecting.
-void MQTT_connect() {
-  int8_t ret;
-
-  // Stop if already connected.
-  if (mqtt.connected()) {
-    return;
-  }
-
-  Serial.print("Connecting to MQTT... ");
-
-  uint8_t retries = 3;
-  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-    Serial.println(mqtt.connectErrorString(ret));
-    Serial.println("Retrying MQTT connection in 5 seconds...");
-    mqtt.disconnect();
-    delay(5000);  // wait 5 seconds
-    retries--;
-    if (retries == 0) {
-     // basically die and wait for WDT to reset me
-     while (1);
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    DEBUG_PRINT("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
+      DEBUG_PRINTLN("connected");
+      //client.subscribe("/home/Switch/com");
+      client.subscribe((String(mqtt_base) + "/" + "com").c_str());
+      DEBUG_PRINT("Substribe topic : ");
+      DEBUG_PRINTLN((String(mqtt_base) + "/" + "com").c_str());
+    } else {
+      DEBUG_PRINT("failed, rc=");
+      DEBUG_PRINT(client.state());
+      DEBUG_PRINTLN(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
     }
-  }
-  Serial.println("MQTT Connected!");
-}
-
-void pulseCountEvent() {
-  if (millis() - pulseMillisOld>50) {
-    pulseCount++;
-    pulseLengthMs=millis() - pulseMillisOld;
-    pulseMillisOld = millis();
-    Serial.println(pulseCount);
-    Serial.println(pulseLengthMs);
-    pulseNow=true;
-  }
-}
-
-uint32_t readRTCMem() {
-  byte rtcStore[4];
-  uint32_t val;
-  system_rtc_mem_read(RTC_ADR, rtcStore, 4);
-  // Serial.println();
-  // Serial.print(rtcStore[0]);
-  // Serial.print(":");
-  // Serial.print(rtcStore[1]);
-  // Serial.print(":");
-  // Serial.print(rtcStore[2]);
-  // Serial.print(":");
-  // Serial.print(rtcStore[3]);
-  val = rtcStore[0] | rtcStore[1] << 8 | rtcStore[2] << 16 | rtcStore[3] << 4;
-  // Serial.println(val);
-  return val;
-}
-
-void writeRTCMem(uint32_t val) {
-  byte rtcStore[4];
-  rtcStore[0] = (val >> 0)  & 0xFFFF;
-  rtcStore[1] = (val >> 8)  & 0xFFFF;
-  rtcStore[2] = (val >> 16) & 0xFFFF;
-  rtcStore[3] = (val >> 24) & 0xFFFF;
-  system_rtc_mem_write(RTC_ADR, rtcStore, 4);
-}
-
-void writePulseToFile(uint32_t pocet) {
-  f = SPIFFS.open("/config.ini", "w");
-  if (!f) {
-    Serial.println("file open failed");
-  } else {
-    Serial.print("Zapisuji pocet pulzu ");
-    Serial.print(pocet);
-    Serial.print(" do souboru config.ini.");
-    f.print(pocet);
-    f.println();
-    f.close();
-  }
-}
-
-unsigned long readPulseFromFile() {
-  f = SPIFFS.open("/config.ini", "r");
-  if (!f) {
-    Serial.println("file open failed");
-    return 0;
-  } else {
-    Serial.println("====== Reading config from SPIFFS file =======");
-    String s = f.readStringUntil('\n');
-    Serial.print("Pocet pulzu z config.ini:");
-    Serial.println(s);
-    f.close();
-    return s.toInt();
   }
 }
