@@ -46,6 +46,11 @@ uint32_t      pulseMillisOld                      = 0;
 bool          pulseNow                            = false;
 uint32_t      pulseLengthMs                       = 0;
 
+struct {
+  uint32_t crc32;
+  byte data[508];
+} rtcData;
+
 bool isDebugEnabled() {
 #ifdef verbose
   return true;
@@ -56,6 +61,19 @@ bool isDebugEnabled() {
 //for LED status
 #include <Ticker.h>
 Ticker ticker;
+
+void pulseCountEvent() {
+  if (millis() - pulseMillisOld>50) {
+    pulseCount++;
+    pulseLengthMs=millis() - pulseMillisOld;
+    pulseMillisOld = millis();
+    DEBUG_PRINTLN(pulseCount);
+    DEBUG_PRINTLN(pulseLengthMs);
+    pulseNow=true;
+  }
+}
+
+
 
 #ifdef timers
 #include <timer.h>
@@ -118,6 +136,98 @@ void tick() {
   //toggle state
   int state = digitalRead(LEDPIN);  // get the current state of GPIO1 pin
   digitalWrite(LEDPIN, !state);          // set pin to the opposite state
+}
+
+
+unsigned long readPulseFromFile() {
+  File f = SPIFFS.open("/config.ini", "r");
+  if (!f) {
+    DEBUG_PRINTLN("file open failed");
+    return 0;
+  } else {
+    DEBUG_PRINTLN("====== Reading config from SPIFFS file =======");
+    String s = f.readStringUntil('\n');
+    DEBUG_PRINT("Pocet pulzu z config.ini:");
+    DEBUG_PRINTLN(s);
+    f.close();
+    return s.toInt();
+  }
+}
+
+void writePulseToFile(uint32_t pocet) {
+  DEBUG_PRINT("Write pulses to config.ini : ");
+  DEBUG_PRINTLN(pulseCount);
+  File f = SPIFFS.open("/config.ini", "w");
+  if (!f) {
+    DEBUG_PRINTLN("file open failed");
+  } else {
+    DEBUG_PRINTLN("OK");
+    f.print(pocet);
+    f.println();
+    f.close();
+  }
+}
+
+
+bool sendStatisticHA(void *) {
+  //printSystemTime();
+  digitalWrite(LEDPIN, LOW);
+  DEBUG_PRINTLN(F(" - I am sending statistic to HA"));
+
+  SenderClass sender;
+  sender.add("VersionSW", VERSION);
+  sender.add("Napeti",  ESP.getVcc());
+  sender.add("HeartBeat", heartBeat++);
+  sender.add("RSSI", WiFi.RSSI());
+  
+  DEBUG_PRINTLN(F("Calling MQTT"));
+  
+  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  digitalWrite(LEDPIN, HIGH);
+  return true;
+}
+
+bool sendDataHA(void) {
+  //printSystemTime();
+  digitalWrite(LEDPIN, LOW);
+  DEBUG_PRINTLN(F(" - I am sending data to HA"));
+
+  SenderClass sender;
+  sender.add("pulseLength", pulseLengthMs);
+  sender.add("Pulse", pulseCount);
+  
+  DEBUG_PRINTLN(F("Calling MQTT"));
+  
+  digitalWrite(LEDPIN, HIGH);
+  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  return true;
+}
+
+bool generatePulse(void *) {
+  pulseCount++;
+  pulseNow=true;
+  return true;
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    DEBUG_PRINT("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
+      DEBUG_PRINTLN("connected");
+      //client.subscribe("/home/Switch/com");
+      //client.subscribe((String(mqtt_base) + "/" + "com").c_str());
+      //DEBUG_PRINT("Substribe topic : ");
+      //DEBUG_PRINTLN((String(mqtt_base) + "/" + "com").c_str());
+    } else {
+      DEBUG_PRINT("failed, rc=");
+      DEBUG_PRINT(client.state());
+      DEBUG_PRINTLN(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
 }
 
 
@@ -304,17 +414,7 @@ void setup() {
   } else {
     writePulseToFile(0);
   }
-  unsigned long pulseCountMem = readRTCMem();
-  Serial.print("Pocet pulzu z RTC pameti:");
-  Serial.println(pulseCountMem);
-  
-  if (pulseCountMem > 0 && pulseCountMem - pulseCount<1000) {
-    pulseCount = pulseCountMem;
-    Serial.print("Pouziji pocet pulsu z RTM pameti :");
-  } else {
-    Serial.print("Pouziji pocet pulsu z config.ini :");
-  }
-  Serial.println(pulseCount);
+  DEBUG_PRINTLN(pulseCount);
   // mqtt.subscribe(&setupPulse);
   // mqtt.subscribe(&restart);
 
@@ -323,11 +423,15 @@ void setup() {
   timer.every(SENDSTAT_DELAY, sendStatisticHA);
 #endif
 
+//  timer.every(2000, generatePulse);
+
   DEBUG_PRINTLN(" Ready");
  
   ticker.detach();
   //keep LED on
   digitalWrite(LEDPIN, HIGH);
+  
+ 
 } //setup
 
 
@@ -346,8 +450,11 @@ void loop() {
 #endif
 
   if (pulseNow) {
-    writeRTCMem();
     sendDataHA();
+    pulseNow=false;
+    if (pulseCount%100==0) {
+      writePulseToFile(pulseCount);
+    }
   }
 
   if (!client.connected()) {
@@ -355,126 +462,3 @@ void loop() {
   }
   client.loop();
 } //loop
-
-
-bool sendStatisticHA(void *) {
-  //printSystemTime();
-  digitalWrite(LEDPIN, LOW);
-  DEBUG_PRINTLN(F(" - I am sending statistic to HA"));
-
-  SenderClass sender;
-  sender.add("VersionSW", VERSION);
-  sender.add("Napeti",  ESP.getVcc());
-  sender.add("HeartBeat", heartBeat++);
-  sender.add("RSSI", WiFi.RSSI());
-  
-  DEBUG_PRINTLN(F("Calling MQTT"));
-  
-  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
-  digitalWrite(LEDPIN, HIGH);
-  return true;
-}
-
-void sendDataHA(void) {
-  //printSystemTime();
-  digitalWrite(LEDPIN, LOW);
-  DEBUG_PRINTLN(F(" - I am sending data to HA"));
-
-  SenderClass sender;
-  sender.add("pulseLength", pulseLengthMs);
-  sender.add("Pulse", pulseCount);
-  
-  DEBUG_PRINTLN(F("Calling MQTT"));
-  
-  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
-  digitalWrite(LEDPIN, HIGH);
-  return true;
-}
-
-void reconnect() {
-  // Loop until we're reconnected
-  while (!client.connected()) {
-    DEBUG_PRINT("Attempting MQTT connection...");
-    // Attempt to connect
-    if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
-      DEBUG_PRINTLN("connected");
-      //client.subscribe("/home/Switch/com");
-      //client.subscribe((String(mqtt_base) + "/" + "com").c_str());
-      //DEBUG_PRINT("Substribe topic : ");
-      //DEBUG_PRINTLN((String(mqtt_base) + "/" + "com").c_str());
-    } else {
-      DEBUG_PRINT("failed, rc=");
-      DEBUG_PRINT(client.state());
-      DEBUG_PRINTLN(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
-    }
-  }
-}
-
-
-void pulseCountEvent() {
-  if (millis() - pulseMillisOld>50) {
-    pulseCount++;
-    pulseLengthMs=millis() - pulseMillisOld;
-    pulseMillisOld = millis();
-    Serial.println(pulseCount);
-    Serial.println(pulseLengthMs);
-    pulseNow=true;
-  }
-}
-
-uint32_t readRTCMem() {
-  byte rtcStore[4];
-  uint32_t val;
-  system_rtc_mem_read(RTC_ADR, rtcStore, 4);
-  // Serial.println();
-  // Serial.print(rtcStore[0]);
-  // Serial.print(":");
-  // Serial.print(rtcStore[1]);
-  // Serial.print(":");
-  // Serial.print(rtcStore[2]);
-  // Serial.print(":");
-  // Serial.print(rtcStore[3]);
-  val = rtcStore[0] | rtcStore[1] << 8 | rtcStore[2] << 16 | rtcStore[3] << 4;
-  // Serial.println(val);
-  return val;
-}
-
-void +++++++++++n j+(uint32_t val) {
-  byte rtcStore[4];
-  rtcStore[0] = (val >> 0)  & 0xFFFF;
-  rtcStore[1] = (val >> 8)  & 0xFFFF;
-  rtcStore[2] = (val >> 16) & 0xFFFF;
-  rtcStore[3] = (val >> 24) & 0xFFFF;
-  system_rtc_mem_write(RTC_ADR, rtcStore, 4);
-}
-
-void writePulseToFile(uint32_t pocet) {
-  File f = SPIFFS.open("/config.ini", "w");
-  if (!f) {
-    Serial.println("file open failed");
-  } else {
-    Serial.print("Zapisuji pocet pulzu ");
-    Serial.print(pocet);
-    Serial.print(" do souboru config.ini.");
-    f.print(pocet);
-    f.println();
-    f.close();
-  }
-}
-
-unsigned long readPulseFromFile() {
-  File f = SPIFFS.open("/config.ini", "r");
-  if (!f) {
-    Serial.println("file open failed");
-    return 0;
-  } else {
-    Serial.println("====== Reading config from SPIFFS file =======");
-    String s = f.readStringUntil('\n');
-    Serial.print("Pocet pulzu z config.ini:");
-    Serial.println(s);
-    f.close();
-    return s.toInt();
-  }
-}
