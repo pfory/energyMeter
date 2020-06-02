@@ -95,20 +95,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   DEBUG_PRINTLN();
 
-  // if (strcmp(topic, "/home/Switch/com")==0) {
-    // if (val=="ON") {
-      // digitalWrite(RELAYPIN, HIGH);
-      // DEBUG_PRINTLN(F("ON"));
-    // } else {
-      // digitalWrite(RELAYPIN, LOW);
-      // DEBUG_PRINTLN(F("OFF"));
-    // }
-  // }
+  if (strcmp(topic, (String(mqtt_base) + "/" + String(mqtt_topic_restart)).c_str())==0) {
+    DEBUG_PRINT("RESTART");
+    ESP.restart();
+  }
   
-  digitalWrite(LEDPIN, LOW);
-  delay(200);
-  digitalWrite(LEDPIN, HIGH);
-
 }
 
 WiFiClient espClient;
@@ -134,8 +125,8 @@ ADC_MODE(ADC_VCC); //vcc read
 
 void tick() {
   //toggle state
-  int state = digitalRead(LEDPIN);  // get the current state of GPIO1 pin
-  digitalWrite(LEDPIN, !state);          // set pin to the opposite state
+  int state = digitalRead(STATUS_LED);  // get the current state of GPIO1 pin
+  digitalWrite(STATUS_LED, !state);          // set pin to the opposite state
 }
 
 
@@ -170,8 +161,7 @@ void writePulseToFile(uint32_t pocet) {
 
 
 bool sendStatisticHA(void *) {
-  //printSystemTime();
-  digitalWrite(LEDPIN, LOW);
+  digitalWrite(STATUS_LED, LOW);
   DEBUG_PRINTLN(F(" - I am sending statistic to HA"));
 
   SenderClass sender;
@@ -183,13 +173,12 @@ bool sendStatisticHA(void *) {
   DEBUG_PRINTLN(F("Calling MQTT"));
   
   sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
-  digitalWrite(LEDPIN, HIGH);
+  digitalWrite(STATUS_LED, HIGH);
   return true;
 }
 
 bool sendDataHA(void) {
-  //printSystemTime();
-  digitalWrite(LEDPIN, LOW);
+  digitalWrite(STATUS_LED, LOW);
   DEBUG_PRINTLN(F(" - I am sending data to HA"));
 
   SenderClass sender;
@@ -198,8 +187,8 @@ bool sendDataHA(void) {
   
   DEBUG_PRINTLN(F("Calling MQTT"));
   
-  digitalWrite(LEDPIN, HIGH);
   sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  digitalWrite(STATUS_LED, HIGH);
   return true;
 }
 
@@ -216,10 +205,7 @@ void reconnect() {
     // Attempt to connect
     if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
       DEBUG_PRINTLN("connected");
-      //client.subscribe("/home/Switch/com");
-      //client.subscribe((String(mqtt_base) + "/" + "com").c_str());
-      //DEBUG_PRINT("Substribe topic : ");
-      //DEBUG_PRINTLN((String(mqtt_base) + "/" + "com").c_str());
+      client.subscribe((String(mqtt_base) + "/" + String(mqtt_topic_restart)).c_str());
     } else {
       DEBUG_PRINT("failed, rc=");
       DEBUG_PRINT(client.state());
@@ -239,7 +225,7 @@ void setup() {
   DEBUG_PRINT(F(" "));
   DEBUG_PRINTLN(F(VERSION));
   
-  pinMode(LEDPIN, OUTPUT);
+  pinMode(STATUS_LED, OUTPUT);
 
   ticker.attach(1, tick);
     
@@ -256,18 +242,22 @@ void setup() {
   DEBUG_PRINTLN(_reset_reason);
   heartBeat = _reset_reason;
 
+ /*
+ REASON_DEFAULT_RST             = 0      normal startup by power on 
+ REASON_WDT_RST                 = 1      hardware watch dog reset 
+ REASON_EXCEPTION_RST           = 2      exception reset, GPIO status won't change 
+ REASON_SOFT_WDT_RST            = 3      software watch dog reset, GPIO status won't change 
+ REASON_SOFT_RESTART            = 4      software restart ,system_restart , GPIO status won't change 
+ REASON_DEEP_SLEEP_AWAKE        = 5      wake up from deep-sleep 
+ REASON_EXT_SYS_RST             = 6      external system reset 
+  */
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
   
-  // drd.stop();
+  ticker.attach(1, tick);
 
-  // if (_dblreset) {
-    // WiFi.disconnect(); //  this alone is not enough to stop the autoconnecter
-    // WiFi.mode(WIFI_AP);
-  // }
-  
-  //WiFiManager
-  //Local intialization. Once its business is done, there is no need to keep it around
+  WiFi.printDiag(Serial);
+    
   WiFiManager wifiManager;
   //reset settings - for testing
   //wifiManager.resetSettings();
@@ -283,39 +273,8 @@ void setup() {
   DEBUG_PRINTLN(_gw);
   DEBUG_PRINTLN(_sn);
 
-  //wifiManager.setConfigPortalTimeout(60); 
-  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
   wifiManager.setAPCallback(configModeCallback);
   
-    //DEBUG_PRINTLN("Double reset detected. Config mode.");
-
-  WiFiManagerParameter custom_mqtt_server("mqtt_server", "MQTT server", mqtt_server, 40);
-  WiFiManagerParameter custom_mqtt_port("mqtt_port", "MQTT server port", String(mqtt_port).c_str(), 5);
-  WiFiManagerParameter custom_mqtt_uname("mqtt_uname", "MQTT username", mqtt_username, 40);
-  WiFiManagerParameter custom_mqtt_key("mqtt_key", "MQTT password", mqtt_key, 20);
-  WiFiManagerParameter custom_mqtt_base("mqtt_base", "MQTT topic end without /", mqtt_base, 60);
-
-  wifiManager.addParameter(&custom_mqtt_server);
-  wifiManager.addParameter(&custom_mqtt_port);
-  wifiManager.addParameter(&custom_mqtt_uname);
-  wifiManager.addParameter(&custom_mqtt_key);
-  wifiManager.addParameter(&custom_mqtt_base);
-
-  //sets timeout until configuration portal gets turned off
-  //useful to make it all retry or go to sleep
-  //in seconds
-  
-  wifiManager.setTimeout(30);
-  wifiManager.setConnectTimeout(30); 
-  //wifiManager.setBreakAfterConfig(true);
-  
-  //set config save notify callback
-  //wifiManager.setSaveConfigCallback(saveConfigCallback);
-  
-  //fetches ssid and pass and tries to connect
-  //if it does not connect it starts an access point with the specified name
-  //here  "AutoConnectAP"
-  //and goes into a blocking loop awaiting configuration
   if (!wifiManager.autoConnect(AUTOCONNECTNAME, AUTOCONNECTPWD)) { 
     DEBUG_PRINTLN("failed to connect and hit timeout");
     delay(3000);
@@ -324,22 +283,6 @@ void setup() {
     delay(5000);
   } 
   
-  validateInput(custom_mqtt_server.getValue(), mqtt_server);
-  mqtt_port = String(custom_mqtt_port.getValue()).toInt();
-  validateInput(custom_mqtt_uname.getValue(), mqtt_username);
-  validateInput(custom_mqtt_key.getValue(), mqtt_key);
-  validateInput(custom_mqtt_base.getValue(), mqtt_base);
-  
-  // if (shouldSaveConfig) {
-    // saveConfig();
-  // }
-  
-  //if you get here you have connected to the WiFi
-  DEBUG_PRINTLN("CONNECTED");
-  DEBUG_PRINT("Local ip : ");
-  DEBUG_PRINTLN(WiFi.localIP());
-  DEBUG_PRINTLN(WiFi.subnetMask());
-
 #ifdef serverHTTP
   server.on ( "/", handleRoot );
   server.begin();
@@ -359,29 +302,9 @@ void setup() {
 #endif
 
 #ifdef ota
-  //OTA
-  // Port defaults to 8266
-  // ArduinoOTA.setPort(8266);
-
-  // Hostname defaults to esp8266-[ChipID]
   ArduinoOTA.setHostname(HOSTNAMEOTA);
 
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
   ArduinoOTA.onStart([]() {
-    // String type;
-    // if (ArduinoOTA.getCommand() == U_FLASH)
-      // type = "sketch";
-    // else // U_SPIFFS
-      // type = "filesystem";
-
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    //DEBUG_PRINTLN("Start updating " + type);
     DEBUG_PRINTLN("Start updating ");
   });
   ArduinoOTA.onEnd([]() {
@@ -423,14 +346,14 @@ void setup() {
   timer.every(SENDSTAT_DELAY, sendStatisticHA);
 #endif
 
-//  timer.every(2000, generatePulse);
-
+  void * a;
+  sendStatisticHA(a);
+  
   DEBUG_PRINTLN(" Ready");
  
   ticker.detach();
   //keep LED on
-  digitalWrite(LEDPIN, HIGH);
-  
+  digitalWrite(STATUS_LED, HIGH);
  
 } //setup
 

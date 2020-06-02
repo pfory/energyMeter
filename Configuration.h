@@ -2,7 +2,7 @@
 #define CONFIGURATION_H
 
 //SW name & version
-#define     VERSION                       "0.80"
+#define     VERSION                       "0.81"
 #define     SW_NAME                       "EnergyMeter"
 
 #define timers
@@ -34,19 +34,21 @@
 #endif 
 
 
-#define LEDPIN                BUILTIN_LED //0
-#define INTERRUPTPIN          2
+#define STATUS_LED                          BUILTIN_LED //status LED
+#define INTERRUPTPIN                        2
 
 #define RTC_ADR               64
 
-char                  mqtt_server[40]       = "192.168.1.56";
-uint16_t              mqtt_port             = 1883;
-char                  mqtt_username[40]     = "datel";
-char                  mqtt_key[20]          = "hanka12";
-char                  mqtt_base[60]         = "/home/EnergyMeter/esp02";
-char                  static_ip[16]         = "192.168.1.141";
-char                  static_gw[16]         = "192.168.1.1";
-char                  static_sn[16]         = "255.255.255.0";
+char                          mqtt_server[40]                = "192.168.1.56";
+uint16_t                      mqtt_port                      = 1883;
+char                          mqtt_username[40]              = "datel";
+char                          mqtt_key[20]                   = "hanka12";
+char                          mqtt_base[60]                  = "/home/EnergyMeter/esp02";
+char                          static_ip[16]                  = "192.168.1.141";
+char                          static_gw[16]                  = "192.168.1.1";
+char                          static_sn[16]                  = "255.255.255.0";
+static const char* const      mqtt_topic_restart             = "restart";
+
 
 /*
 Version history:
