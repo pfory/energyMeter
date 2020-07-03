@@ -2,7 +2,7 @@
 #define CONFIGURATION_H
 
 //SW name & version
-#define     VERSION                       "0.81"
+#define     VERSION                       "0.82"
 #define     SW_NAME                       "EnergyMeter"
 
 #define timers
@@ -34,7 +34,7 @@
 #endif 
 
 
-#define STATUS_LED                          BUILTIN_LED //status LED
+#define STATUS_LED                          0 //status LED
 #define INTERRUPTPIN                        2
 
 #define RTC_ADR               64
