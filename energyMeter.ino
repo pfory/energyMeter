@@ -50,7 +50,7 @@ bool isDebugEnabled() {
 #include <Ticker.h>
 Ticker ticker;
 
-void pulseCountEvent() {
+void ICACHE_RAM_ATTR pulseCountEvent() {
   if (millis() - pulseMillisOld>50) {
     pulseLengthMs=millis() - pulseMillisOld;
     pulseMillisOld = millis();
@@ -109,6 +109,8 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 WiFiManager wifiManager;
+
+void ICACHE_RAM_ATTR handleInterrupt();
 
 //----------------------------------------------------- S E T U P -----------------------------------------------------------
 void setup() {
