@@ -2,18 +2,9 @@
 --------------------------------------------------------------------------------------------------------------------------
 Petr Fory pfory@seznam.cz
 GIT - https://github.com/pfory/energyMeter
-//ESP8266-01 !!!!!!!SPIFSS!!!!!!!!
+//ESP8266-01
 */
 #include "Configuration.h"
-
-#include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
-#include <Ticker.h>
-#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
-#include "Sender.h"
-#include <Wire.h>
-#include <PubSubClient.h>
-#include <FS.h>          
 
 #ifdef ota
 #include <ArduinoOTA.h>
@@ -23,6 +14,8 @@ GIT - https://github.com/pfory/energyMeter
 #include <ESP8266WebServer.h>
 ESP8266WebServer server(80);
 #endif
+
+DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
 
 #ifdef time
 #include <TimeLib.h>
@@ -41,15 +34,10 @@ time_t getNtpTime();
 
 uint32_t      heartBeat                           = 0;
 
-uint32_t      pulseCount                          = 0;
+//uint32_t      pulseCount                          = 0;
 uint32_t      pulseMillisOld                      = 0;
 bool          pulseNow                            = false;
 uint32_t      pulseLengthMs                       = 0;
-
-struct {
-  uint32_t crc32;
-  byte data[508];
-} rtcData;
 
 bool isDebugEnabled() {
 #ifdef verbose
@@ -64,10 +52,8 @@ Ticker ticker;
 
 void pulseCountEvent() {
   if (millis() - pulseMillisOld>50) {
-    pulseCount++;
     pulseLengthMs=millis() - pulseMillisOld;
     pulseMillisOld = millis();
-    DEBUG_PRINTLN(pulseCount);
     DEBUG_PRINTLN(pulseLengthMs);
     pulseNow=true;
   }
@@ -102,9 +88,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   
 }
 
-WiFiClient espClient;
-PubSubClient client(espClient);
-
 //gets called when WiFiManager enters configuration mode
 void configModeCallback (WiFiManager *myWiFiManager) {
   DEBUG_PRINTLN("Entered config mode");
@@ -112,13 +95,6 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   //if you used auto generated SSID, print it
   DEBUG_PRINTLN(myWiFiManager->getConfigPortalSSID());
   //entered config mode, make led toggle faster
-}
-
-void validateInput(const char *input, char *output) {
-  String tmp = input;
-  tmp.trim();
-  tmp.replace(' ', '_');
-  tmp.toCharArray(output, tmp.length() + 1);
 }
 
 ADC_MODE(ADC_VCC); //vcc read
@@ -129,93 +105,10 @@ void tick() {
   digitalWrite(STATUS_LED, !state);          // set pin to the opposite state
 }
 
+WiFiClient espClient;
+PubSubClient client(espClient);
 
-unsigned long readPulseFromFile() {
-  File f = SPIFFS.open("/config.ini", "r");
-  if (!f) {
-    DEBUG_PRINTLN("file open failed");
-    return 0;
-  } else {
-    DEBUG_PRINTLN("====== Reading config from SPIFFS file =======");
-    String s = f.readStringUntil('\n');
-    DEBUG_PRINT("Pocet pulzu z config.ini:");
-    DEBUG_PRINTLN(s);
-    f.close();
-    return s.toInt();
-  }
-}
-
-void writePulseToFile(uint32_t pocet) {
-  DEBUG_PRINT("Write pulses to config.ini : ");
-  DEBUG_PRINTLN(pulseCount);
-  File f = SPIFFS.open("/config.ini", "w");
-  if (!f) {
-    DEBUG_PRINTLN("file open failed");
-  } else {
-    DEBUG_PRINTLN("OK");
-    f.print(pocet);
-    f.println();
-    f.close();
-  }
-}
-
-
-bool sendStatisticHA(void *) {
-  digitalWrite(STATUS_LED, LOW);
-  DEBUG_PRINTLN(F(" - I am sending statistic to HA"));
-
-  SenderClass sender;
-  sender.add("VersionSW", VERSION);
-  sender.add("Napeti",  ESP.getVcc());
-  sender.add("HeartBeat", heartBeat++);
-  sender.add("RSSI", WiFi.RSSI());
-  
-  DEBUG_PRINTLN(F("Calling MQTT"));
-  
-  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
-  digitalWrite(STATUS_LED, HIGH);
-  return true;
-}
-
-bool sendDataHA(void) {
-  digitalWrite(STATUS_LED, LOW);
-  DEBUG_PRINTLN(F(" - I am sending data to HA"));
-
-  SenderClass sender;
-  sender.add("pulseLength", pulseLengthMs);
-  sender.add("Pulse", pulseCount);
-  
-  DEBUG_PRINTLN(F("Calling MQTT"));
-  
-  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
-  digitalWrite(STATUS_LED, HIGH);
-  return true;
-}
-
-bool generatePulse(void *) {
-  pulseCount++;
-  pulseNow=true;
-  return true;
-}
-
-void reconnect() {
-  // Loop until we're reconnected
-  while (!client.connected()) {
-    DEBUG_PRINT("Attempting MQTT connection...");
-    // Attempt to connect
-    if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
-      DEBUG_PRINTLN("connected");
-      client.subscribe((String(mqtt_base) + "/" + String(mqtt_topic_restart)).c_str());
-    } else {
-      DEBUG_PRINT("failed, rc=");
-      DEBUG_PRINT(client.state());
-      DEBUG_PRINTLN(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
-    }
-  }
-}
-
+WiFiManager wifiManager;
 
 //----------------------------------------------------- S E T U P -----------------------------------------------------------
 void setup() {
@@ -229,12 +122,24 @@ void setup() {
 
   ticker.attach(1, tick);
     
-  WiFi.printDiag(Serial);
-    
-  // bool validConf = readConfig();
-  // if (!validConf) {
-    // DEBUG_PRINTLN(F("ERROR config corrupted"));
-  // }
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+
+  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wifiManager.setAPCallback(configModeCallback);
+  wifiManager.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT);
+  wifiManager.setConnectTimeout(CONNECT_TIMEOUT);
+  
+    if (drd.detectDoubleReset()) {
+    DEBUG_PRINTLN("Double reset detected, starting config portal...");
+    ticker.attach(0.2, tick);
+    if (!wifiManager.startConfigPortal(HOSTNAMEOTA)) {
+      DEBUG_PRINTLN("failed to connect and hit timeout");
+      delay(3000);
+      //reset and try again, or maybe put it to deep sleep
+      ESP.reset();
+      delay(5000);
+    }
+  }
   
   rst_info *_reset_info = ESP.getResetInfoPtr();
   uint8_t _reset_reason = _reset_info->reason;
@@ -253,28 +158,9 @@ void setup() {
   */
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
-  
-  ticker.attach(1, tick);
 
   WiFi.printDiag(Serial);
     
-  WiFiManager wifiManager;
-  //reset settings - for testing
-  //wifiManager.resetSettings();
-  
-  IPAddress _ip,_gw,_sn;
-  _ip.fromString(static_ip);
-  _gw.fromString(static_gw);
-  _sn.fromString(static_sn);
-
-  wifiManager.setSTAStaticIPConfig(_ip, _gw, _sn);
-  
-  DEBUG_PRINTLN(_ip);
-  DEBUG_PRINTLN(_gw);
-  DEBUG_PRINTLN(_sn);
-
-  wifiManager.setAPCallback(configModeCallback);
-  
   if (!wifiManager.autoConnect(AUTOCONNECTNAME, AUTOCONNECTPWD)) { 
     DEBUG_PRINTLN("failed to connect and hit timeout");
     delay(3000);
@@ -282,6 +168,8 @@ void setup() {
     ESP.reset();
     delay(5000);
   } 
+
+  sendNetInfoMQTT();
   
 #ifdef serverHTTP
   server.on ( "/", handleRoot );
@@ -329,18 +217,6 @@ void setup() {
   pinMode(INTERRUPTPIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(INTERRUPTPIN), pulseCountEvent, RISING);
   
-  SPIFFS.begin();
-  // open config file for reading
-  if (SPIFFS.exists("/config.ini")) {
-    DEBUG_PRINTLN("Raed from /config.ini");
-    pulseCount = readPulseFromFile();
-  } else {
-    writePulseToFile(0);
-  }
-  DEBUG_PRINTLN(pulseCount);
-  // mqtt.subscribe(&setupPulse);
-  // mqtt.subscribe(&restart);
-
 #ifdef timers
   //setup timers
   timer.every(SENDSTAT_DELAY, sendStatisticHA);
@@ -354,7 +230,10 @@ void setup() {
   ticker.detach();
   //keep LED on
   digitalWrite(STATUS_LED, HIGH);
- 
+  
+  drd.stop();
+
+  DEBUG_PRINTLN(F("Setup end."));
 } //setup
 
 
@@ -375,13 +254,83 @@ void loop() {
   if (pulseNow) {
     sendDataHA();
     pulseNow=false;
-    if (pulseCount%100==0) {
-      writePulseToFile(pulseCount);
-    }
+    // if (pulseCount%100==0) {
+      // writePulseToFile(pulseCount);
+    // }
   }
 
-  if (!client.connected()) {
-    reconnect();
-  }
+  reconnect();
   client.loop();
 } //loop
+
+bool sendStatisticHA(void *) {
+  digitalWrite(STATUS_LED, LOW);
+  DEBUG_PRINTLN(F("Statistic"));
+
+  SenderClass sender;
+  sender.add("VersionSW", VERSION);
+  sender.add("Napeti",  ESP.getVcc());
+  sender.add("HeartBeat", heartBeat++);
+  sender.add("RSSI", WiFi.RSSI());
+  
+  DEBUG_PRINTLN(F("Calling MQTT"));
+  
+  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  digitalWrite(STATUS_LED, HIGH);
+  return true;
+}
+
+bool sendDataHA(void) {
+  digitalWrite(STATUS_LED, LOW);
+  DEBUG_PRINTLN(F("Data"));
+
+  SenderClass sender;
+  sender.add("pulseLength", pulseLengthMs);
+  //sender.add("Pulse", pulseCount);
+  
+  DEBUG_PRINTLN(F("Calling MQTT"));
+  
+  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  sendNetInfoMQTT();
+  digitalWrite(STATUS_LED, HIGH);
+  return true;
+}
+
+void sendNetInfoMQTT() {
+  digitalWrite(BUILTIN_LED, LOW);
+  //printSystemTime();
+  DEBUG_PRINTLN(F("Net info"));
+
+  SenderClass sender;
+  sender.add("IP",              WiFi.localIP().toString().c_str());
+  sender.add("MAC",             WiFi.macAddress());
+  
+  DEBUG_PRINTLN(F("Calling MQTT"));
+  
+  sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
+  digitalWrite(BUILTIN_LED, HIGH);
+  return;
+}
+
+bool generatePulse(void *) {
+  pulseNow=true;
+  return true;
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+     if (lastConnectAttempt == 0 || lastConnectAttempt + connectDelay < millis()) {
+    DEBUG_PRINT("Attempting MQTT connection...");
+      // Attempt to connect
+      if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
+        DEBUG_PRINTLN("connected");
+        client.subscribe((String(mqtt_base) + "/#").c_str());
+      } else {
+        lastConnectAttempt = millis();
+        DEBUG_PRINT("failed, rc=");
+        DEBUG_PRINTLN(client.state());
+      }
+    }
+  }
+}

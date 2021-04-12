@@ -1,8 +1,17 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
+#include <DoubleResetDetector.h>      //https://github.com/khoih-prog/ESP_DoubleResetDetector
+#include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+#include <Ticker.h>
+#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
+#include "Sender.h"
+#include <Wire.h>
+#include <PubSubClient.h>
+
 //SW name & version
-#define     VERSION                       "0.82"
+#define     VERSION                       "0.90"
 #define     SW_NAME                       "EnergyMeter"
 
 #define timers
@@ -13,7 +22,7 @@
 #define AUTOCONNECTPWD    "password"
 
 #ifdef ota
-#define HOSTNAMEOTA   "energymeter"
+#define HOSTNAMEOTA   SW_NAME VERSION
 #endif
 
 #ifdef verbose
@@ -44,18 +53,27 @@ uint16_t                      mqtt_port                      = 1883;
 char                          mqtt_username[40]              = "datel";
 char                          mqtt_key[20]                   = "hanka12";
 char                          mqtt_base[60]                  = "/home/EnergyMeter/esp02";
-char                          static_ip[16]                  = "192.168.1.141";
-char                          static_gw[16]                  = "192.168.1.1";
-char                          static_sn[16]                  = "255.255.255.0";
 static const char* const      mqtt_topic_restart             = "restart";
+static const char* const      mqtt_topic_netinfo             = "netinfo";
 
+uint32_t              connectDelay                = 30000; //30s
+uint32_t              lastConnectAttempt          = 0;  
 
 /*
 Version history:
 --------------------------------------------------------------------------------------------------------------------------
 HW
-Sonoff
+ESP8266-01
 */
+
+// Number of seconds after reset during which a
+// subseqent reset will be considered a double reset.
+#define DRD_TIMEOUT 2
+// RTC Memory Address for the DoubleResetDetector to use
+#define DRD_ADDRESS 0
+
+#define CONFIG_PORTAL_TIMEOUT 60 //jak dlouho zustane v rezimu AP nez se cip resetuje
+#define CONNECT_TIMEOUT 120 //jak dlouho se ceka na spojeni nez se aktivuje config portal
   
 #define SENDSTAT_DELAY                       60000 //poslani statistiky kazdou minutu
 #endif
