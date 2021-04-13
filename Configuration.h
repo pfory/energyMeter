@@ -11,7 +11,7 @@
 #include <PubSubClient.h>
 
 //SW name & version
-#define     VERSION                       "0.90"
+#define     VERSION                       "0.91"
 #define     SW_NAME                       "EnergyMeter"
 
 #define timers
@@ -45,8 +45,6 @@
 
 #define STATUS_LED                          0 //status LED
 #define INTERRUPTPIN                        2
-
-#define RTC_ADR               64
 
 char                          mqtt_server[40]                = "192.168.1.56";
 uint16_t                      mqtt_port                      = 1883;
