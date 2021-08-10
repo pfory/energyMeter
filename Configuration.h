@@ -11,7 +11,7 @@
 #include <PubSubClient.h>
 
 //SW name & version
-#define     VERSION                       "0.91"
+#define     VERSION                       "0.92"
 #define     SW_NAME                       "EnergyMeter"
 
 #define timers

@@ -221,11 +221,11 @@ void setup() {
   
 #ifdef timers
   //setup timers
-  timer.every(SENDSTAT_DELAY, sendStatisticHA);
+  timer.every(SENDSTAT_DELAY, sendStatisticMQTT);
 #endif
 
   void * a;
-  sendStatisticHA(a);
+  sendStatisticMQTT(a);
   
   DEBUG_PRINTLN(" Ready");
  
@@ -253,19 +253,16 @@ void loop() {
   ArduinoOTA.handle();
 #endif
 
-  if (pulseNow) {
-    sendDataHA();
+  if (pulseNow && pulseLengthMs>0) {
+    sendDataMQTT();
     pulseNow=false;
-    // if (pulseCount%100==0) {
-      // writePulseToFile(pulseCount);
-    // }
   }
 
   reconnect();
   client.loop();
 } //loop
 
-bool sendStatisticHA(void *) {
+bool sendStatisticMQTT(void *) {
   digitalWrite(STATUS_LED, LOW);
   DEBUG_PRINTLN(F("Statistic"));
 
@@ -282,7 +279,7 @@ bool sendStatisticHA(void *) {
   return true;
 }
 
-bool sendDataHA(void) {
+bool sendDataMQTT(void) {
   digitalWrite(STATUS_LED, LOW);
   DEBUG_PRINTLN(F("Data"));
 
@@ -314,10 +311,10 @@ void sendNetInfoMQTT() {
   return;
 }
 
-bool generatePulse(void *) {
-  pulseNow=true;
-  return true;
-}
+// bool generatePulse(void *) {
+  // pulseNow=true;
+  // return true;
+// }
 
 void reconnect() {
   // Loop until we're reconnected
