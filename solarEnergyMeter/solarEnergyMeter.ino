@@ -98,7 +98,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
     DEBUG_PRINT("RESTART");
     ESP.restart();
   }
-  
+
+  if (strcmp(topic, (String(mqtt_base) + "/" + String(mqtt_topic_netinfo)).c_str())==0) {
+    sendNetInfoMQTT();
+  }
 }
 
 //gets called when WiFiManager enters configuration mode
@@ -144,7 +147,7 @@ void setup() {
   wifiManager.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT);
   wifiManager.setConnectTimeout(CONNECT_TIMEOUT);
   
-    if (drd.detectDoubleReset()) {
+  if (drd.detectDoubleReset()) {
     DEBUG_PRINTLN("Double reset detected, starting config portal...");
     ticker.attach(0.2, tick);
     if (!wifiManager.startConfigPortal(HOSTNAMEOTA)) {
@@ -308,7 +311,6 @@ bool sendDataMQTT1(void) {
   DEBUG_PRINTLN(F("Calling MQTT"));
   
   sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
-  sendNetInfoMQTT();
   digitalWrite(STATUS_LED, HIGH);
   return true;
 }
@@ -323,7 +325,6 @@ bool sendDataMQTT2(void) {
   DEBUG_PRINTLN(F("Calling MQTT"));
   
   sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
-  sendNetInfoMQTT();
   digitalWrite(STATUS_LED, HIGH);
   return true;
 }

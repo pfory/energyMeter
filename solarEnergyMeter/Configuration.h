@@ -11,7 +11,7 @@
 #include <PubSubClient.h>
 
 //SW name & version
-#define     VERSION                       "0.10"
+#define     VERSION                       "0.20"
 #define     SW_NAME                       "solarEnergyMeter"
 
 #define timers
