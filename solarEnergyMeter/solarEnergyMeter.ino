@@ -42,6 +42,9 @@ uint32_t      pulseMillisOld2                     = 0;
 bool          pulseNow2                           = false;
 uint32_t      pulseLengthMs2                      = 0;
 
+uint32_t      statMillisOld                       = 0;
+
+
 
 bool isDebugEnabled() {
 #ifdef verbose
@@ -272,13 +275,21 @@ void loop() {
 #endif
 
   if (pulseNow1) {
+    //sendNetInfoMQTT();
     sendDataMQTT1();
     pulseNow1=false;
   }
   if (pulseNow2) {
+    //sendNetInfoMQTT();
     sendDataMQTT2();
     pulseNow2=false;
   }
+  
+  // if (millis() > statMillisOld+SENDSTAT_DELAY) {
+    // statMillisOld = millis();
+    // void * a;
+    // sendStatisticMQTT(a);
+  // }
 
   reconnect();
   client.loop();
@@ -301,7 +312,7 @@ bool sendStatisticMQTT(void *) {
   return true;
 }
 
-bool sendDataMQTT1(void) {
+void sendDataMQTT1(void) {
   digitalWrite(STATUS_LED, LOW);
   DEBUG_PRINTLN(F("Data1"));
 
@@ -312,10 +323,10 @@ bool sendDataMQTT1(void) {
   
   sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
   digitalWrite(STATUS_LED, HIGH);
-  return true;
+  return;
 }
 
-bool sendDataMQTT2(void) {
+void sendDataMQTT2(void) {
   digitalWrite(STATUS_LED, LOW);
   DEBUG_PRINTLN(F("Data2"));
 
@@ -326,7 +337,7 @@ bool sendDataMQTT2(void) {
   
   sender.sendMQTT(mqtt_server, mqtt_port, mqtt_username, mqtt_key, mqtt_base);
   digitalWrite(STATUS_LED, HIGH);
-  return true;
+  return;
 }
 
 void sendNetInfoMQTT() {
