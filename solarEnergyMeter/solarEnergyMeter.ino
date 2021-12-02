@@ -1,8 +1,8 @@
 /*ENERGY Meter
 --------------------------------------------------------------------------------------------------------------------------
 Petr Fory pfory@seznam.cz
-GIT - https://github.com/pfory/energyMeter
-//ESP8266-01
+GIT - https://github.com/pfory/solarEnergyMeter
+//Wemos D1
 */
 #include "Configuration.h"
 
@@ -44,6 +44,8 @@ uint32_t      pulseLengthMs2                      = 0;
 
 uint32_t      statMillisOld                       = 0;
 
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 
 bool isDebugEnabled() {
@@ -100,10 +102,12 @@ void callback(char* topic, byte* payload, unsigned int length) {
   if (strcmp(topic, (String(mqtt_base) + "/" + String(mqtt_topic_restart)).c_str())==0) {
     DEBUG_PRINT("RESTART");
     ESP.restart();
-  }
-
-  if (strcmp(topic, (String(mqtt_base) + "/" + String(mqtt_topic_netinfo)).c_str())==0) {
+  } else if (strcmp(topic, (String(mqtt_base) + "/" + String(mqtt_topic_netinfo)).c_str())==0) {
     sendNetInfoMQTT();
+  } else if (strcmp(topic, (String(mqtt_base) + "/" + String(mqtt_config_portal)).c_str())==0) {
+    startConfigPortal();
+  } else if (strcmp(topic, (String(mqtt_base) + "/" + String(mqtt_config_portal_stop)).c_str())==0) {
+    stopConfigPortal();
   }
 }
 
@@ -113,7 +117,6 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   DEBUG_PRINTLN(WiFi.softAPIP());
   //if you used auto generated SSID, print it
   DEBUG_PRINTLN(myWiFiManager->getConfigPortalSSID());
-  //entered config mode, make led toggle faster
 }
 
 ADC_MODE(ADC_VCC); //vcc read
@@ -123,9 +126,6 @@ void tick() {
   int state = digitalRead(STATUS_LED);  // get the current state of GPIO1 pin
   digitalWrite(STATUS_LED, !state);          // set pin to the opposite state
 }
-
-WiFiClient espClient;
-PubSubClient client(espClient);
 
 WiFiManager wifiManager;
 
@@ -149,16 +149,14 @@ void setup() {
   wifiManager.setAPCallback(configModeCallback);
   wifiManager.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT);
   wifiManager.setConnectTimeout(CONNECT_TIMEOUT);
+  wifiManager.setBreakAfterConfig(true);
+  wifiManager.setWiFiAutoReconnect(true);
   
   if (drd.detectDoubleReset()) {
+    drd.stop();
     DEBUG_PRINTLN("Double reset detected, starting config portal...");
-    ticker.attach(0.2, tick);
     if (!wifiManager.startConfigPortal(HOSTNAMEOTA)) {
-      DEBUG_PRINTLN("failed to connect and hit timeout");
-      delay(3000);
-      //reset and try again, or maybe put it to deep sleep
-      ESP.reset();
-      delay(5000);
+      DEBUG_PRINTLN("Failed to connect. Use ESP without WiFi.");
     }
   }
   
@@ -180,16 +178,12 @@ void setup() {
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 
-  WiFi.printDiag(Serial);
-    
   if (!wifiManager.autoConnect(AUTOCONNECTNAME, AUTOCONNECTPWD)) { 
-    DEBUG_PRINTLN("failed to connect and hit timeout");
-    delay(3000);
-    //reset and try again, or maybe put it to deep sleep
-    ESP.reset();
-    delay(5000);
-  } 
+    DEBUG_PRINTLN("Autoconnect failed connect to WiFi. Use ESP without WiFi.");
+  }   
 
+  WiFi.printDiag(Serial);
+  
   sendNetInfoMQTT();
   
 #ifdef serverHTTP
@@ -243,10 +237,12 @@ void setup() {
 #ifdef timers
   //setup timers
   timer.every(SENDSTAT_DELAY, sendStatisticMQTT);
+  timer.every(CONNECT_DELAY, reconnect);
 #endif
 
   void * a;
   sendStatisticMQTT(a);
+  reconnect(a);
   
   DEBUG_PRINTLN(" Ready");
  
@@ -257,6 +253,7 @@ void setup() {
   drd.stop();
 
   DEBUG_PRINTLN(F("Setup end."));
+  DEBUG_PRINTLN(F("SETUP END......................."));
 } //setup
 
 
@@ -273,27 +270,31 @@ void loop() {
 #ifdef ota
   ArduinoOTA.handle();
 #endif
+  wifiManager.process();
 
   if (pulseNow1) {
-    //sendNetInfoMQTT();
     sendDataMQTT1();
     pulseNow1=false;
   }
   if (pulseNow2) {
-    //sendNetInfoMQTT();
     sendDataMQTT2();
     pulseNow2=false;
   }
-  
-  // if (millis() > statMillisOld+SENDSTAT_DELAY) {
-    // statMillisOld = millis();
-    // void * a;
-    // sendStatisticMQTT(a);
-  // }
-
-  reconnect();
+ 
   client.loop();
 } //loop
+
+
+void startConfigPortal(void) {
+  DEBUG_PRINTLN("START config portal");
+  wifiManager.setConfigPortalBlocking(false);
+  wifiManager.startConfigPortal(HOSTNAMEOTA);
+}
+
+void stopConfigPortal(void) {
+  DEBUG_PRINTLN("STOP config portal");
+  wifiManager.stopConfigPortal();
+}
 
 bool sendStatisticMQTT(void *) {
   digitalWrite(STATUS_LED, LOW);
@@ -342,7 +343,6 @@ void sendDataMQTT2(void) {
 
 void sendNetInfoMQTT() {
   digitalWrite(BUILTIN_LED, LOW);
-  //printSystemTime();
   DEBUG_PRINTLN(F("Net info"));
 
   SenderClass sender;
@@ -356,20 +356,17 @@ void sendNetInfoMQTT() {
   return;
 }
 
-void reconnect() {
-  // Loop until we're reconnected
-  while (!client.connected()) {
-     if (lastConnectAttempt == 0 || lastConnectAttempt + connectDelay < millis()) {
+bool reconnect(void *) {
+  if (!client.connected()) {
     DEBUG_PRINT("Attempting MQTT connection...");
-      // Attempt to connect
-      if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
-        DEBUG_PRINTLN("connected");
-        client.subscribe((String(mqtt_base) + "/#").c_str());
-      } else {
-        lastConnectAttempt = millis();
-        DEBUG_PRINT("failed, rc=");
-        DEBUG_PRINTLN(client.state());
-      }
+    // Attempt to connect
+    if (client.connect(mqtt_base, mqtt_username, mqtt_key)) {
+      client.subscribe((String(mqtt_base) + "/#").c_str());
+      DEBUG_PRINTLN("connected");
+    } else {
+      DEBUG_PRINT("failed, rc=");
+      DEBUG_PRINTLN(client.state());
     }
   }
+  return true;
 }

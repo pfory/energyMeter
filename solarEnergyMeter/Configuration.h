@@ -11,7 +11,7 @@
 #include <PubSubClient.h>
 
 //SW name & version
-#define     VERSION                       "0.24"
+#define     VERSION                       "0.30"
 #define     SW_NAME                       "solarEnergyMeter"
 
 #define timers
@@ -54,9 +54,9 @@ char                          mqtt_key[20]                   = "hanka12";
 char                          mqtt_base[60]                  = "/home/solarEnergyMeter";
 static const char* const      mqtt_topic_restart             = "restart";
 static const char* const      mqtt_topic_netinfo             = "netinfo";
+static const char* const      mqtt_config_portal             = "config";
+static const char* const      mqtt_config_portal_stop        = "disconfig";
 
-uint32_t              connectDelay                = 30000; //30s
-uint32_t              lastConnectAttempt          = 0;  
 
 /*
 Version history:
@@ -72,7 +72,8 @@ ESP8266-01
 #define DRD_ADDRESS 0
 
 #define CONFIG_PORTAL_TIMEOUT 60 //jak dlouho zustane v rezimu AP nez se cip resetuje
-#define CONNECT_TIMEOUT 120 //jak dlouho se ceka na spojeni nez se aktivuje config portal
+#define CONNECT_TIMEOUT 5 //jak dlouho se ceka na spojeni nez se aktivuje config portal
   
 #define SENDSTAT_DELAY                       60000 //poslani statistiky kazdou minutu
+#define CONNECT_DELAY                        5000 //ms
 #endif
