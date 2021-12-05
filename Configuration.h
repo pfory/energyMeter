@@ -74,4 +74,5 @@ ESP8266-01
 #define CONNECT_TIMEOUT 120 //jak dlouho se ceka na spojeni nez se aktivuje config portal
   
 #define SENDSTAT_DELAY                       60000 //poslani statistiky kazdou minutu
+#define CONNECT_DELAY                        5000 //ms
 #endif
