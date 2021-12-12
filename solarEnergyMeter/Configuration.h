@@ -1,17 +1,10 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
-#include <DoubleResetDetector.h>      //https://github.com/khoih-prog/ESP_DoubleResetDetector
-#include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
-#include <Ticker.h>
 #include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
-#include <Wire.h>
-#include <PubSubClient.h>
-#include <timer.h>
 
 //SW name & version
-#define     VERSION                       "0.40"
+#define     VERSION                       "0.41"
 #define     SW_NAME                       "solarEnergyMeter"
 
 #define timers
@@ -40,7 +33,7 @@ ESP8266-01
 */
 
 #define CONFIG_PORTAL_TIMEOUT 60 //jak dlouho zustane v rezimu AP nez se cip resetuje
-#define CONNECT_TIMEOUT 5 //jak dlouho se ceka na spojeni nez se aktivuje config portal
+#define CONNECT_TIMEOUT 120 //jak dlouho se ceka na spojeni nez se aktivuje config portal
   
 #define SENDSTAT_DELAY                       60000 //poslani statistiky kazdou minutu
 #define CONNECT_DELAY                        5000 //ms
