@@ -6,7 +6,7 @@
 #include <ArduinoJson.h>
 
 //SW name & version
-#define     VERSION                       "1.01"
+#define     VERSION                       "1.02"
 #define     SW_NAME                       "EnergyMeter"
 
 #define timers
