@@ -41,6 +41,8 @@ ESP8266-01
 #define SENDSTAT_DELAY                       60000 //poslani statistiky kazdou minutu
 #define CONNECT_DELAY                        5000 //ms
 
+#define BUILTIN_LED                          1
+
 #include <fce.h>
 
 #endif
