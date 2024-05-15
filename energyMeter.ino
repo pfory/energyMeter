@@ -69,18 +69,8 @@ void setup() {
 
   void * a;
   reconnect(a);
-  sendStatisticMQTT(a);
-  sendNetInfoMQTT();
+  postSetup();
   
-  DEBUG_PRINTLN(" Ready");
- 
-  ticker.detach();
-  //keep LED on
-  digitalWrite(BUILTIN_LED, HIGH);
-  
-  drd.stop();
-
-  DEBUG_PRINTLN(F("SETUP END......................."));
 } //setup
 
 

@@ -4,7 +4,7 @@
 #include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
 
 //SW name & version
-#define     VERSION                       "0.41"
+#define     VERSION                       "0.50"
 #define     SW_NAME                       "solarEnergyMeter"
 
 #define timers
@@ -32,9 +32,6 @@ HW
 ESP8266-01
 */
 
-#define CONFIG_PORTAL_TIMEOUT 60 //jak dlouho zustane v rezimu AP nez se cip resetuje
-#define CONNECT_TIMEOUT 120 //jak dlouho se ceka na spojeni nez se aktivuje config portal
-  
 #define SENDSTAT_DELAY                       60000 //poslani statistiky kazdou minutu
 #define CONNECT_DELAY                        5000 //ms
 

@@ -79,24 +79,11 @@ void setup() {
   
 #ifdef timers
   //setup timers
-  timer.every(SENDSTAT_DELAY, sendStatisticMQTT);
+  //timer.every(SENDSTAT_DELAY, sendStatisticMQTT);
   timer.every(CONNECT_DELAY, reconnect);
 #endif
 
-  void * a;
-  reconnect(a);
-  sendStatisticMQTT(a);
-  sendNetInfoMQTT();
-  
-  DEBUG_PRINTLN(" Ready");
- 
-  ticker.detach();
-  //keep LED on
-  digitalWrite(BUILTIN_LED, HIGH);
-  
-  drd.stop();
-
-  DEBUG_PRINTLN(F("SETUP END......................."));
+  postSetup();
 } //setup
 
 
@@ -164,7 +151,7 @@ bool reconnect(void *) {
       client.publish((String(mqtt_base) + "/LWT").c_str(), "online", true);
       DEBUG_PRINTLN("connected");
     } else {
-     DEBUG_PRINT("disconected.");
+      DEBUG_PRINT("disconected.");
       DEBUG_PRINT(" Wifi status:");
       DEBUG_PRINT(WiFi.status());
       DEBUG_PRINT(" Client status:");

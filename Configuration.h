@@ -2,11 +2,11 @@
 #define CONFIGURATION_H
 
 #include <Wire.h>
-#include <timer.h>
+//#include <timer.h>
 #include <ArduinoJson.h>
 
 //SW name & version
-#define     VERSION                       "1.02"
+#define     VERSION                       "1.03"
 #define     SW_NAME                       "EnergyMeter"
 
 #define timers
