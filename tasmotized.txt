@@ -1,5 +1,6 @@
 nahrazeno Tasmota Sensors
 
+CounterType1 1
 Topic EnergyMeter/esp02
 Full Topic /home/%prefix%/%topic%/
 GPIO2 Counter1
