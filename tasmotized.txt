@@ -13,3 +13,5 @@ Rule1
       Backlog var1 %value%; var2 %value%; Mult2 1000; Publish /home/EnergyMeter/esp02/pulseLength %var2%
     ENDIF 
   ENDON
+  
+Rule1 1
