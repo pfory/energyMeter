@@ -9,9 +9,13 @@ Po nahrání spustit v konzole:
 
 Rule1 
   ON Counter#C1 DO 
-    IF (%value%!=%var1%) 
-      Backlog var1 %value%; var2 %value%; Mult2 1000; Publish /home/EnergyMeter/esp02/pulseLength %var2%
-    ENDIF 
+    IF (%value%<300000)
+      IF (%value%!=%var1%) 
+        Backlog var1 %value%; var2 %value%; Mult2 1000; var3=4500000.0/var2; WebButton1 %var3% W; Publish /home/EnergyMeter/esp02/pulseLength %var2%; Publish /home/EnergyMeter/esp02/prikon %var3%
+      ENDIF 
+    ELSE 
+      Publish /home/EnergyMeter/esp02/pulseLength 0; Publish /home/EnergyMeter/esp02/prikon 0
+    ENDIF
   ENDON
   
 Rule1 1

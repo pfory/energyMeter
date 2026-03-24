@@ -11,16 +11,23 @@ Po nahrání spustit v konzole:
 
 Rule1 
   ON Counter#C1 DO 
-    IF (%value%!=%var1%) 
-      Backlog var1 %value%; var2 %value%; Mult2 1000; Publish /home/solarEnergyMeter/pulseLength1 %var2%
-    ENDIF 
+    IF (%value%<300000)
+      IF (%value%!=%var1%) 
+        Backlog var1 %value%; var2 %value%; Mult2 1000; Publish /home/solarEnergyMeter/pulseLength1 %var2%
+      ENDIF 
+    ELSE
+      Publish /home/solarEnergyMeter/pulseLength1 0
+    ENDIF
   ENDON
   
 Rule2
   ON Counter#C2 DO 
-    IF (%value%!=%var1%) 
-      Backlog var1 %value%; var2 %value%; Mult2 1000; Publish /home/solarEnergyMeter/pulseLength2 %var2%
-    ENDIF 
+    IF (%value%<300000)
+      IF (%value%!=%var10%) 
+        Backlog var10 %value%; var12 %value%; Mult12 1000; Publish /home/solarEnergyMeter/pulseLength2 %var12%
+      ENDIF 
+    ELSE
+      Publish /home/solarEnergyMeter/pulseLength2 0
   ENDON  
   
 Rule1 1
